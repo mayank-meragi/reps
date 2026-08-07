@@ -20,7 +20,7 @@ export function readSessionsMonth(qc: QueryClient, month: string): Session[] {
   )
 }
 
-function writeSessionsMonth(qc: QueryClient, month: string, mutate: (current: Session[]) => Session[]): Session[] {
+export function writeSessionsMonth(qc: QueryClient, month: string, mutate: (current: Session[]) => Session[]): Session[] {
   const next = updateFile<Session[]>(PATHS.sessions(month), emptySessions, mutate)
   qc.setQueryData(fileQueryKey(PATHS.sessions(month)), next)
   return next

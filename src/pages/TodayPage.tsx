@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Flag, Minus, Plus, Trash2 } from 'lucide-react'
+import { Check, Flag, Minus, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -13,7 +13,7 @@ import { ExerciseThumb } from '@/components/ExerciseImage'
 import ExercisePicker from '@/components/ExercisePicker'
 import RestTimer from '@/components/RestTimer'
 import { useAllExercises } from '@/hooks/useExercises'
-import type { Exercise, Modality, Session, SessionExercise, SetEntry, VenuesFile } from '@/lib/types'
+import type { Exercise, Modality, ProgramsIndexFile, Session, SessionExercise, SetEntry, VenuesFile } from '@/lib/types'
 
 const CARDIO_MODALITIES: Modality[] = ['walk', 'run', 'cycle', 'swim', 'hike']
 const MODALITY_ORDER: Modality[] = ['strength', 'walk', 'run', 'cycle', 'swim', 'hike', 'mobility', 'sport', 'other']
@@ -81,6 +81,41 @@ function StartSessionCard() {
         )}
         <Button size="sm" disabled={busy} onClick={() => void start()}>
           Start {modality}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---- Planned session prompt (active program, nothing started from it yet today) ----
+
+function PlannedSessionPrompt({ programName }: { programName: string }) {
+  const runCommand = useRunCommand()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function start() {
+    setBusy(true)
+    setError(null)
+    try {
+      await runCommand('program.start_today', {})
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not start the planned session')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="border-none bg-[var(--ink-900)] text-white">
+      <CardContent className="flex items-center justify-between gap-3 py-4">
+        <div>
+          <p className="text-sm font-semibold">Today's plan is ready</p>
+          <p className="text-xs text-white/70">From "{programName}" — weights computed from your history.</p>
+          {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
+        </div>
+        <Button size="sm" className="shrink-0 bg-white text-[var(--ink-900)] hover:bg-white/90" disabled={busy} onClick={() => void start()}>
+          <Sparkles className="size-4" /> {busy ? 'Starting…' : 'Start'}
         </Button>
       </CardContent>
     </Card>
@@ -391,11 +426,17 @@ function CompletedSessionCard({ session }: { session: Session }) {
 
 export default function TodayPage() {
   const { data: sessions } = useFileQuery<Session[]>(PATHS.sessions(currentMonthKey()), [])
+  const { data: programIndex } = useFileQuery<ProgramsIndexFile>(PATHS.programsIndex, { activeId: null, list: [] })
   const [timer, setTimer] = useState<{ startedAt: number; seconds: number } | null>(null)
   const today = effectiveTodayISO()
   const todaySessions = (sessions ?? []).filter((s) => s.date === today)
   const active = todaySessions.find((s) => !s.endedAt) ?? null
   const completed = todaySessions.filter((s) => s.endedAt)
+
+  const activeProgramId = programIndex?.activeId ?? null
+  const activeProgramMeta = programIndex?.list.find((p) => p.id === activeProgramId)
+  const hasProgramSessionToday = todaySessions.some((s) => s.programId === activeProgramId)
+  const showPlannedPrompt = !active && activeProgramMeta && !hasProgramSessionToday
 
   return (
     <div className="space-y-3 pb-16">
@@ -404,6 +445,8 @@ export default function TodayPage() {
       {completed.map((s) => (
         <CompletedSessionCard key={s.id} session={s} />
       ))}
+
+      {showPlannedPrompt && <PlannedSessionPrompt programName={activeProgramMeta.name} />}
 
       {active ? (
         isCardioModality(active.modality) ? (

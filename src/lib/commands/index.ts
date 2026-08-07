@@ -7,6 +7,7 @@ import './profile'
 import './venues'
 import './exercises'
 import './sessions'
+import './programs'
 
 export * from './registry'
 export * from './context'

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, Dumbbell, Home as HomeIcon, Settings } from 'lucide-react'
+import { CalendarClock, ClipboardList, Dumbbell, Home as HomeIcon, Settings } from 'lucide-react'
 import TodayPage from '@/pages/TodayPage'
 import HistoryPage from '@/pages/HistoryPage'
+import PlanPage from '@/pages/PlanPage'
 import SettingsPage from '@/pages/SettingsPage'
 import Onboarding from '@/components/Onboarding'
 import ActionToast from '@/components/ActionToast'
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils'
 
 const NAV = [
   { to: '/', label: 'Today', icon: HomeIcon, end: true },
+  { to: '/plan', label: 'Plan', icon: ClipboardList },
   { to: '/history', label: 'History', icon: CalendarClock },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -52,6 +54,7 @@ function Shell() {
       <main className="mx-auto max-w-5xl px-4 py-3 pb-28 md:py-6 md:pb-10">
         <Routes>
           <Route path="/" element={<TodayPage />} />
+          <Route path="/plan" element={<PlanPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
