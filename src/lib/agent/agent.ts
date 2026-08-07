@@ -42,15 +42,19 @@ export interface AgentResult {
  * One user turn of the agent: call the active AI provider with the command
  * registry's tools, execute any tool calls through run() — the same entry
  * point the UI uses — feed results back, and loop until it answers in text.
+ *
+ * `system`, when passed, replaces the default coach prompt entirely (still
+ * with the full command registry as tools) — this is how setup's directed
+ * interview reuses this exact loop instead of duplicating it.
  */
-export async function runAgentTurn(userMessage: string, history: ChatMessage[], deps: AgentDeps): Promise<AgentResult> {
+export async function runAgentTurn(userMessage: string, history: ChatMessage[], deps: AgentDeps, system?: string): Promise<AgentResult> {
   const messages: ChatMessage[] = [...history, { role: 'user', text: userMessage }]
   const ctx: CommandContext = { ...deps, source: 'ai' }
   let toolCalls = 0
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const response = await chat({
-      system: buildSystemPrompt(deps.qc),
+      system: system ?? buildSystemPrompt(deps.qc),
       messages,
       tools: toolDefs(),
       temperature: 0.2,

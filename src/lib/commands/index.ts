@@ -8,6 +8,8 @@ import './venues'
 import './exercises'
 import './sessions'
 import './programs'
+import './memory'
+import './quicklog'
 
 export * from './registry'
 export * from './context'

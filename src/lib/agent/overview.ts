@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { getProfile } from '../commands/profile'
 import { getVenues } from '../commands/venues'
 import { readSessionsMonth } from '../commands/sessions'
+import { getCoachMemory } from '../commands/memory'
 import { currentMonthKey, effectiveTodayISO } from '../dates'
 import { setSummary, completedSetCount, formatDuration } from '../sessionStats'
 
@@ -58,6 +59,8 @@ export function buildOverview(qc: QueryClient): string {
           .join('\n')
       : '(none yet this month)'
 
+  const memory = getCoachMemory(qc).summary
+
   return `Today: ${today}.
 Profile: ${profileLine}
 Venues:
@@ -66,5 +69,6 @@ ${activeLine}
 Finished today:
 ${completedLine}
 Recent sessions this month:
-${recentLine}`
+${recentLine}
+${memory ? `\nCoach notes:\n${memory}\n` : ''}`
 }

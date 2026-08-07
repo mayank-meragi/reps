@@ -45,3 +45,18 @@ export function completedSetCount(exercises: SessionExercise[]): { done: number;
     { done: 0, total: 0 },
   )
 }
+
+/**
+ * "Ghost set" text: what was actually done last time this exercise showed up
+ * in the given sessions (excluding the current one), most recent first.
+ * Null when there's no prior data — the UI just shows nothing then.
+ */
+export function lastPerformanceSummary(exerciseId: string, sessions: Session[], excludeSessionId?: string): string | null {
+  const candidates = sessions.filter((s) => s.id !== excludeSessionId && s.exercises.some((e) => e.exerciseId === exerciseId))
+  const sorted = [...candidates].sort((a, b) => b.date.localeCompare(a.date))
+  const found = sorted[0]?.exercises.find((e) => e.exerciseId === exerciseId)
+  if (!found) return null
+  const doneSets = found.sets.filter((s) => s.done)
+  if (doneSets.length === 0) return null
+  return doneSets.map(formatSet).filter(Boolean).join(', ')
+}

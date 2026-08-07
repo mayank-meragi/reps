@@ -6,9 +6,11 @@ import { updateFile, loadFile } from '@/lib/sync'
 import { listDir } from '@/lib/github'
 import { currentMonthKey, effectiveTodayISO, monthKey } from '@/lib/dates'
 import { isTimedCategory } from '@/lib/exerciseDb'
+import { doubleProgression, performedSets } from '@/lib/engine'
 import type { CardioResult, Modality, SetEntry, SetType, Session, SessionExercise } from '@/lib/types'
 import { defineCommand } from './registry'
 import { allExercises } from './exercises'
+import { getVenues } from './venues'
 
 const emptySessions: Session[] = []
 
@@ -57,7 +59,23 @@ async function mutateSession(qc: QueryClient, sessionId: string, mutate: (s: Ses
   return updated
 }
 
-function defaultSets(category: string): SetEntry[] {
+/** Most recent sets logged for this exercise, anywhere in the given month's sessions. */
+function lastSetsThisMonth(qc: QueryClient, exerciseId: string): SetEntry[] {
+  const sessions = readSessionsMonth(qc, currentMonthKey())
+  const sorted = [...sessions]
+    .filter((s) => s.exercises.some((e) => e.exerciseId === exerciseId))
+    .sort((a, b) => b.date.localeCompare(a.date))
+  return sorted[0]?.exercises.find((e) => e.exerciseId === exerciseId)?.sets ?? []
+}
+
+/**
+ * Default sets for a freshly-added exercise. Reps-mode exercises get a real
+ * progression-aware target (double progression off this month's last
+ * performance, [8,12] as a generic hypertrophy-ish range) instead of a flat
+ * 3x10 guess — this is the "ghost set" logic for ad-hoc additions, the same
+ * math a program's instantiate step uses.
+ */
+function defaultSets(qc: QueryClient, exerciseId: string, category: string): SetEntry[] {
   if (category === 'cardio') return [{ type: 'working', targetDurationSec: 600, done: false }]
   if (category === 'stretching') {
     return [
@@ -65,11 +83,9 @@ function defaultSets(category: string): SetEntry[] {
       { type: 'working', targetDurationSec: 30, done: false },
     ]
   }
-  return [
-    { type: 'working', targetReps: 10, done: false },
-    { type: 'working', targetReps: 10, done: false },
-    { type: 'working', targetReps: 10, done: false },
-  ]
+  const lastSets = performedSets(lastSetsThisMonth(qc, exerciseId))
+  const target = doubleProgression({ lastSets, repRange: [8, 12] })
+  return Array.from({ length: 3 }, () => ({ type: 'working' as const, targetReps: target.targetReps, targetWeight: target.targetWeight, done: false }))
 }
 
 const MODALITIES: Modality[] = ['strength', 'walk', 'run', 'cycle', 'swim', 'hike', 'mobility', 'sport', 'other']
@@ -144,7 +160,7 @@ export const addExerciseCommand = defineCommand<AddExerciseArgs, Session>({
   name: 'session.add_exercise',
   title: 'Add exercise to session',
   description:
-    'Add an exercise (from exercise.search results) to an in-progress session, with sensible default sets — 3x10 for strength, or a single timed set for cardio/stretching.',
+    'Add an exercise (from exercise.search results) to an in-progress session. Reps-mode sets default to a progression-aware target off this month\'s history (or 8-12 reps, no weight, if never done before); cardio/stretching get a single timed set.',
   kind: 'write',
   parameters: {
     type: 'object',
@@ -160,7 +176,7 @@ export const addExerciseCommand = defineCommand<AddExerciseArgs, Session>({
       name: exercise.name,
       mode: isTimedCategory(exercise.category) ? 'duration' : 'reps',
       restSeconds: isTimedCategory(exercise.category) ? 30 : 90,
-      sets: defaultSets(exercise.category),
+      sets: defaultSets(ctx.qc, exercise.id, exercise.category),
     }
     return mutateSession(ctx.qc, args.sessionId, (s) => ({ ...s, exercises: [...s.exercises, entry] }))
   },
@@ -334,6 +350,34 @@ export const removeSetCommand = defineCommand<{ sessionId: string; exerciseId: s
       ),
     })),
   summarize: () => 'Removed a set',
+})
+
+// ---- session.set_venue ----
+
+export const setSessionVenueCommand = defineCommand<{ sessionId: string; venueId: string }, { session: Session; unsupported: string[] }>({
+  name: 'session.set_venue',
+  title: 'Change session venue',
+  description:
+    "Change which venue an in-progress session is happening at (e.g. \"actually I'm at home today\"). Doesn't remove or swap exercises automatically — returns the names of any exercises the new venue's equipment doesn't support, so they can be swapped via session.remove_exercise/add_exercise.",
+  kind: 'write',
+  parameters: { type: 'object', properties: { sessionId: { type: 'string' }, venueId: { type: 'string' } }, required: ['sessionId', 'venueId'] },
+  handler: async (args, ctx) => {
+    const session = await mutateSession(ctx.qc, args.sessionId, (s) => ({ ...s, venueId: args.venueId }))
+    const venue = getVenues(ctx.qc).find((v) => v.id === args.venueId)
+    const library = await allExercises(ctx.qc)
+    const byId = new Map(library.map((e) => [e.id, e]))
+    const unsupported =
+      venue && venue.equipment.length > 0
+        ? session.exercises
+            .filter((se) => {
+              const eq = byId.get(se.exerciseId)?.equipment
+              return eq && eq !== 'body only' && !venue.equipment.includes(eq)
+            })
+            .map((se) => se.name)
+        : []
+    return { session, unsupported }
+  },
+  summarize: () => 'Changed session venue',
 })
 
 // ---- session.log_cardio ----

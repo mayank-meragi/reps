@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Flag, Minus, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Check, Flag, MapPin, Minus, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,12 +8,13 @@ import { PATHS } from '@/lib/paths'
 import { currentMonthKey, effectiveTodayISO } from '@/lib/dates'
 import { useFileQuery } from '@/hooks/useData'
 import { useRunCommand } from '@/lib/commands/useRunCommand'
-import { setSummary, completedSetCount, sessionVolumeKg, formatDuration } from '@/lib/sessionStats'
+import { setSummary, completedSetCount, sessionVolumeKg, formatDuration, lastPerformanceSummary } from '@/lib/sessionStats'
+import { plateMath, STANDARD_BARBELL_KG, STANDARD_PLATE_INVENTORY_KG } from '@/lib/engine'
 import { ExerciseThumb } from '@/components/ExerciseImage'
 import ExercisePicker from '@/components/ExercisePicker'
 import RestTimer from '@/components/RestTimer'
 import { useAllExercises } from '@/hooks/useExercises'
-import type { Exercise, Modality, ProgramsIndexFile, Session, SessionExercise, SetEntry, VenuesFile } from '@/lib/types'
+import type { Exercise, Modality, Profile, ProgramsIndexFile, Session, SessionExercise, SetEntry, VenuesFile } from '@/lib/types'
 
 const CARDIO_MODALITIES: Modality[] = ['walk', 'run', 'cycle', 'swim', 'hike']
 const MODALITY_ORDER: Modality[] = ['strength', 'walk', 'run', 'cycle', 'swim', 'hike', 'mobility', 'sport', 'other']
@@ -138,10 +139,16 @@ function SetRow({
   onLogged: (restSeconds: number) => void
 }) {
   const runCommand = useRunCommand()
+  const { data: profile } = useFileQuery<Profile | null>(PATHS.profile, null)
   const timed = exercise.mode === 'duration'
   const [reps, setReps] = useState(String(set.reps ?? set.targetReps ?? ''))
   const [weight, setWeight] = useState(String(set.weight ?? set.targetWeight ?? ''))
   const [minutes, setMinutes] = useState(String(((set.durationSec ?? set.targetDurationSec ?? 0) / 60) || ''))
+
+  const weightNum = Number(weight)
+  const barKg = profile?.barbellWeight ?? STANDARD_BARBELL_KG
+  const plates =
+    !timed && weightNum > barKg ? plateMath(weightNum, barKg, profile?.plateInventory ?? STANDARD_PLATE_INVENTORY_KG) : null
 
   async function commitField(patch: Partial<SetEntry>) {
     await runCommand('session.update_set', { sessionId, exerciseId: exercise.exerciseId, setIndex, patch })
@@ -204,7 +211,9 @@ function SetRow({
             onBlur={() => set.done && void commitField({ weight: Number(weight) || undefined })}
             aria-label="weight"
           />
-          <span className="flex-1 text-xs text-muted-foreground">kg</span>
+          <span className="text-xs text-muted-foreground">
+            kg{plates && plates.perSide.length > 0 ? ` · ${plates.perSide.join('+')}/side` : ''}
+          </span>
         </>
       )}
       <button
@@ -212,7 +221,7 @@ function SetRow({
         aria-label={set.done ? 'Mark set not done' : 'Mark set done'}
         onClick={() => void toggleDone()}
         className={cn(
-          'flex size-8 items-center justify-center rounded-full transition-colors',
+          'ml-auto flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
           set.done ? 'bg-[var(--emerald-600)] text-white' : 'bg-white text-muted-foreground ring-1 ring-[var(--border-default)]',
         )}
       >
@@ -221,7 +230,7 @@ function SetRow({
       <button
         type="button"
         aria-label="Remove set"
-        className="text-muted-foreground/60 hover:text-destructive"
+        className="shrink-0 text-muted-foreground/60 hover:text-destructive"
         onClick={() => void runCommand('session.remove_set', { sessionId, exerciseId: exercise.exerciseId, setIndex })}
       >
         <Minus className="size-3.5" />
@@ -230,9 +239,49 @@ function SetRow({
   )
 }
 
+// ---- Venue switcher (shared by both active-session card types) ----
+
+function VenueSwitcher({ session }: { session: Session }) {
+  const runCommand = useRunCommand()
+  const { data: venuesFile } = useFileQuery<VenuesFile>(PATHS.venues, { venues: [] })
+  const venues = venuesFile?.venues ?? []
+  const [warning, setWarning] = useState<string | null>(null)
+  if (venues.length === 0) return null
+
+  async function switchVenue(venueId: string) {
+    setWarning(null)
+    const result = await runCommand<{ sessionId: string; venueId: string }, { unsupported: string[] }>('session.set_venue', {
+      sessionId: session.id,
+      venueId,
+    })
+    if (result.unsupported.length > 0) {
+      setWarning(`${result.unsupported.join(', ')} may not be available here — swap manually if needed.`)
+    }
+  }
+
+  return (
+    <div className="mt-1 flex items-center gap-1.5">
+      <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+      <select
+        className="h-6 rounded-full border-none bg-transparent text-xs text-muted-foreground outline-none"
+        value={session.venueId ?? ''}
+        onChange={(e) => void switchVenue(e.target.value)}
+      >
+        <option value="">No venue</option>
+        {venues.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.name}
+          </option>
+        ))}
+      </select>
+      {warning && <span className="text-[10px] text-amber-600">{warning}</span>}
+    </div>
+  )
+}
+
 // ---- Exercise-based active session (strength / mobility / sport / other) ----
 
-function ExerciseSessionCard({ session, onRest }: { session: Session; onRest: (seconds: number) => void }) {
+function ExerciseSessionCard({ session, sessions, onRest }: { session: Session; sessions: Session[]; onRest: (seconds: number) => void }) {
   const runCommand = useRunCommand()
   const [pickerOpen, setPickerOpen] = useState(false)
   const { done, total } = completedSetCount(session.exercises)
@@ -250,6 +299,7 @@ function ExerciseSessionCard({ session, onRest }: { session: Session; onRest: (s
                 {done}/{total} sets
               </p>
             )}
+            <VenueSwitcher session={session} />
           </div>
           <button
             type="button"
@@ -262,7 +312,9 @@ function ExerciseSessionCard({ session, onRest }: { session: Session; onRest: (s
         </CardContent>
       </Card>
 
-      {session.exercises.map((ex) => (
+      {session.exercises.map((ex) => {
+        const ghost = lastPerformanceSummary(ex.exerciseId, sessions, session.id)
+        return (
         <Card key={ex.exerciseId}>
           <CardContent className="space-y-2 py-3">
             <div className="flex items-center gap-2.5">
@@ -273,6 +325,7 @@ function ExerciseSessionCard({ session, onRest }: { session: Session; onRest: (s
                   {setSummary(ex.sets)}
                   {ex.mode === 'reps' ? ` · rest ${ex.restSeconds ?? 90}s` : ''}
                 </p>
+                {ghost && <p className="text-[11px] text-muted-foreground/70">Last time: {ghost}</p>}
               </div>
               <button
                 type="button"
@@ -297,7 +350,8 @@ function ExerciseSessionCard({ session, onRest }: { session: Session; onRest: (s
             </button>
           </CardContent>
         </Card>
-      ))}
+        )
+      })}
 
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={() => setPickerOpen(true)}>
@@ -352,7 +406,10 @@ function CardioSessionCard({ session }: { session: Session }) {
     <Card>
       <CardContent className="space-y-3 py-4">
         <div className="flex items-center justify-between">
-          <p className="text-base font-bold capitalize">{session.name}</p>
+          <div>
+            <p className="text-base font-bold capitalize">{session.name}</p>
+            <VenueSwitcher session={session} />
+          </div>
           <button
             type="button"
             aria-label="Discard session"
@@ -422,6 +479,55 @@ function CompletedSessionCard({ session }: { session: Session }) {
   )
 }
 
+// ---- Quick log (already did it — outside the app, or before opening it) ----
+
+function QuickLogWidget() {
+  const runCommand = useRunCommand()
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  async function submit() {
+    const input = text.trim()
+    if (!input || busy) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      const session = await runCommand<{ text: string }, Session>('quicklog.parse', { text: input })
+      setText('')
+      setNotice(`Logged "${session.name}".`)
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Could not log that')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-2 py-3">
+        <p className="text-xs font-semibold text-muted-foreground">Quick log (already trained?)</p>
+        <div className="flex gap-2">
+          <input
+            className="min-w-0 flex-1 rounded-full bg-[var(--surface-sunken)] px-4 py-2 text-sm outline-none"
+            placeholder='"bench 3x8 60kg" or "walked 40 min"'
+            value={text}
+            disabled={busy}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit()
+            }}
+          />
+          <Button size="sm" className="rounded-full" disabled={busy || !text.trim()} onClick={() => void submit()}>
+            <Wand2 className="size-4" /> {busy ? '…' : 'Log'}
+          </Button>
+        </div>
+        {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ---- Page ----
 
 export default function TodayPage() {
@@ -452,11 +558,13 @@ export default function TodayPage() {
         isCardioModality(active.modality) ? (
           <CardioSessionCard session={active} />
         ) : (
-          <ExerciseSessionCard session={active} onRest={(seconds) => setTimer({ startedAt: Date.now(), seconds })} />
+          <ExerciseSessionCard session={active} sessions={sessions ?? []} onRest={(seconds) => setTimer({ startedAt: Date.now(), seconds })} />
         )
       ) : (
         <StartSessionCard />
       )}
+
+      <QuickLogWidget />
 
       <RestTimer timer={timer} onDone={() => setTimer(null)} />
     </div>

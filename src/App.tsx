@@ -7,11 +7,13 @@ import HistoryPage from '@/pages/HistoryPage'
 import PlanPage from '@/pages/PlanPage'
 import SettingsPage from '@/pages/SettingsPage'
 import Onboarding from '@/components/Onboarding'
+import SetupChat from '@/components/SetupChat'
 import ActionToast from '@/components/ActionToast'
 import Assistant from '@/components/Assistant'
 import { isConfigured } from '@/lib/cache'
 import { initSync, flush } from '@/lib/sync'
 import { useSyncState } from '@/hooks/useSyncState'
+import { useProfile } from '@/hooks/useProfile'
 import SyncStatus from '@/components/SyncStatus'
 import { cn } from '@/lib/utils'
 
@@ -23,6 +25,17 @@ const NAV = [
 ]
 
 function Shell() {
+  const { profile, isReady } = useProfile()
+  const [skipSetup, setSkipSetup] = useState(false)
+
+  if (isReady && !profile && !skipSetup) {
+    return (
+      <div className="min-h-screen bg-muted/40 text-foreground">
+        <SetupChat onSkip={() => setSkipSetup(true)} />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 bg-background/85 backdrop-blur">
