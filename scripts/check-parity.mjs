@@ -14,7 +14,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const SRC = new URL('../src', import.meta.url).pathname
+const COMMANDS_DIR = join(SRC, 'lib/commands')
 const ALLOWED_PREFIXES = ['lib/commands/', 'lib/data/', 'lib/sync.ts']
+const COMMAND_SUPPORT_FILES = new Set(['context.ts', 'index.ts', 'log.ts', 'registry.ts', 'toast.ts', 'useRunCommand.ts'])
 
 /** @type {string[]} */
 const violations = []
@@ -49,6 +51,20 @@ function check(file) {
 
 walk(SRC)
 
+// A command module that is not imported by commands/index.ts never registers,
+// so neither the UI nor the AI can call it. Treat that as a parity failure.
+const commandIndex = readFileSync(join(COMMANDS_DIR, 'index.ts'), 'utf8')
+for (const entry of readdirSync(COMMANDS_DIR)) {
+  if (!entry.endsWith('.ts') || COMMAND_SUPPORT_FILES.has(entry)) continue
+  const text = readFileSync(join(COMMANDS_DIR, entry), 'utf8')
+  if (!/\bdefineCommand\s*[<(]/.test(text)) continue
+  const moduleName = entry.replace(/\.ts$/, '')
+  const importRe = new RegExp(`import\\s+["']\\./${moduleName}["']`)
+  if (!importRe.test(commandIndex)) {
+    violations.push(`lib/commands/${entry}: defines commands but is not imported by lib/commands/index.ts`)
+  }
+}
+
 if (violations.length > 0) {
   console.error('\nParity check failed — direct persistence writes outside the command layer:\n')
   for (const v of violations) console.error(`  ✗ ${v}`)
@@ -56,4 +72,4 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log('Parity check passed — no direct writes outside src/lib/commands/.')
+console.log('Parity check passed — every command is registered for UI + AI, with no direct writes outside src/lib/commands/.')

@@ -19,6 +19,9 @@ export interface Exercise {
   instructions: string[]
   category: string
   images: string[]
+  /** Optional richer media for catalogs/custom exercises that provide it. */
+  gifUrl?: string
+  videoUrl?: string
   /** True for a user-created exercise, absent from free-exercise-db */
   custom?: true
   aliases?: string[]
@@ -90,20 +93,29 @@ export interface ProgramDay {
   target?: CardioTarget
 }
 
+export interface WeeklyTrainingTarget {
+  modality: Modality
+  sessions: number
+  intent: string
+}
+
 export interface Program {
   id: string
   name: string
   goal: string
   weeks: number
   daysPerWeek: number
-  split: string
   startDate: string
   status: ProgramStatus
   progression: ProgressionScheme
-  days: ProgramDay[]
+  /** The mesocycle's north star. Concrete sessions are generated on demand. */
+  theme: string
+  weeklyTargets: WeeklyTrainingTarget[]
+  priorities: string[]
+  progressionGuidance: string
+  recoveryGuidance: string
   rationale: string
   generatedBy: 'ai' | 'manual'
-  deloadWeek?: number
   createdAt: string
 }
 
@@ -155,6 +167,17 @@ export interface CardioResult {
   avgPaceSecPerKm?: number
 }
 
+export interface SessionPrescription {
+  generatedAt: string
+  /** One-time input used for this recommendation, not permanent coach memory. */
+  considerations?: string
+  rationale: string
+  target?: CardioTarget
+  consideredSessionIds: string[]
+  contextSummary: string[]
+  availableMinutes?: number
+}
+
 export interface Session {
   id: string
   /** YYYY-MM-DD */
@@ -171,6 +194,8 @@ export interface Session {
   readinessId?: string
   exercises: SessionExercise[]
   cardio?: CardioResult
+  /** Present while this session is a generated recommendation, and retained for audit after completion. */
+  prescription?: SessionPrescription
   rationale?: string
   debrief?: string
   feeling?: 1 | 2 | 3 | 4 | 5

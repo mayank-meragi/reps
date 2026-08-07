@@ -1,7 +1,5 @@
 import { getConfig, type ConfigKey } from '../cache'
-import { anthropicAdapter } from './anthropic'
-import { geminiAdapter } from './gemini'
-import { openaiAdapter } from './openai'
+import { createAiSdkAdapter } from './ai-sdk'
 import { NoAiKeyError, type ChatRequest, type ChatResponse, type JsonRequest, type LlmAdapter, type Provider } from './types'
 
 export * from './types'
@@ -36,9 +34,9 @@ const MODEL_CONFIG: Record<Provider, ConfigKey> = {
 }
 
 const ADAPTERS: Record<Provider, LlmAdapter> = {
-  gemini: geminiAdapter,
-  openai: openaiAdapter,
-  anthropic: anthropicAdapter,
+  gemini: createAiSdkAdapter('gemini'),
+  openai: createAiSdkAdapter('openai'),
+  anthropic: createAiSdkAdapter('anthropic'),
 }
 
 export function activeProvider(): Provider {

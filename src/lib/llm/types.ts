@@ -26,10 +26,9 @@ export interface ToolResult {
 }
 
 /**
- * Provider-native representation of an assistant turn, echoed back verbatim
- * when the same provider serializes the history (preserves thought signatures
- * and exact formatting). A different provider reconstructs from the neutral
- * fields instead.
+ * AI SDK-normalized assistant turn, including provider metadata. Echoed back
+ * for same-provider history to preserve thought signatures; switching models
+ * reconstructs the turn from the neutral fields instead.
  */
 export interface RawAssistantTurn {
   provider: Provider

@@ -10,6 +10,7 @@ const IMG_BASE = 'https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exer
 const CACHE_NAME = 'reps-exercise-db'
 
 export function exerciseImageUrl(imagePath: string): string {
+  if (/^https?:\/\//.test(imagePath)) return imagePath
   return IMG_BASE + imagePath
 }
 

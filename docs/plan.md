@@ -28,6 +28,20 @@ Three things follow that are worth naming up front:
 - **Control parity** — navigation, dialogs, filters, timers are commands too. The AI can
   drive the screen, not just the database.
 
+### Feature gate: capability before interface
+
+Every feature starts by designing the AI's capability path, before any UI is added:
+
+1. Check the registry for existing read, search, filter, facet, and write commands.
+2. Define every additional typed tool the AI needs to discover state and act without guessing.
+3. Implement those commands and shared selectors first; the UI then becomes another caller.
+4. Exercise the feature through the AI path and read the result back before calling it done.
+
+External catalogs and APIs must be exposed as tools rather than hidden inside a UI flow. The AI
+chooses which searches and filters to run and makes the product decision from their results. Code
+still enforces permissions, valid IDs, schemas, safety constraints, and domain invariants, but it
+does not replace the AI's judgment with an invisible recommendation algorithm.
+
 ---
 
 ## 2. Stack (mirrors personal-fin deliberately)
@@ -43,7 +57,7 @@ Three things follow that are worth naming up front:
 | Lint | oxlint | no test suite by default (see §12) |
 | Hosting | GitHub Pages, public app repo | `mayank-meragi/reps` |
 | Database | **GitHub repo as JSON store** via Contents API | fine-grained PAT in localStorage |
-| AI | multi-provider: Gemini / OpenAI / Anthropic | `src/lib/llm/` copied near-verbatim |
+| AI | Vercel AI SDK Core + Gemini / OpenAI / Anthropic providers | Unified structured output, tools, images, usage, and model switching |
 
 **Infra to copy from personal-fin as-is** (it's generic and already battle-tested):
 `lib/github.ts`, `lib/sync.ts`, `lib/cache.ts`, `lib/merge.ts`, `lib/dates.ts`,
@@ -95,8 +109,6 @@ export interface Command<A = any, R = any> {
   description: string          // fed verbatim to the LLM as the tool description
   schema: JsonSchema           // params; used for LLM tool defs AND runtime validation
   kind: 'read' | 'write' | 'destructive'
-  /** Hide from the LLM (rare, e.g. token entry). Must be explicit — see parity check. */
-  aiExposed?: false
   handler(args: A, ctx: CommandContext): R | Promise<R>
   /** Inverse operation for the shared undo stack. */
   undo?(args: A, before: Snapshot, ctx: CommandContext): void
@@ -119,7 +131,10 @@ export interface Command<A = any, R = any> {
 2. **Selectors are the only numbers.** Components import from `lib/selectors/*`; each selector
    is registered as a read command by a single `defineSelectorCommand()` wrapper, so
    registering a chart registers the AI's ability to read it.
-3. **Coverage report.** `npm run parity` prints every command, whether it's AI-exposed, whether
+3. **No hidden product commands.** Every registered command becomes an AI tool. There is no
+   `aiExposed: false` escape hatch; security boundaries such as credential entry are not domain
+   commands and stay outside the product command surface.
+4. **Coverage report.** `npm run parity` prints every command, whether it's AI-exposed, whether
    it has `undo`, and any selector without a read command. Cheap, visible, keeps it honest.
 
 ### Shared undo + audit
@@ -367,7 +382,7 @@ Port `agent.ts` (round cap 6, tool-call budget 12, tool errors returned to the m
   coach memory. Detail is fetched by tool call, never dumped into the prompt.
 - **Tiered models**: the cheap flash/mini/haiku default for chat and parsing; a stronger model
   selectable for program generation (a per-task model override in settings). Note the known
-  Gemini gotcha: structured calls need `thinkingConfig: { thinkingBudget: 0 }`.
+  Provider-specific request formats are owned by the Vercel AI SDK adapters rather than Reps.
 
 ---
 
@@ -463,7 +478,7 @@ feature set so the parity contract is proven while the surface is small.
   with `gh workflow run deploy.yml`.
 - Contents API GETs can be stale for a second or two after a commit.
 - App repo must be public for free-plan Pages; data repo private.
-- Gemini structured output: `thinkingConfig: { thinkingBudget: 0 }` or thoughts eat the token cap.
+- Keep Vercel AI SDK and its provider packages on compatible major versions; they own provider request-shape changes.
 
 ## 14. Settled
 

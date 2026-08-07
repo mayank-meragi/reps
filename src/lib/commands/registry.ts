@@ -20,8 +20,6 @@ export interface Command<A = unknown, R = unknown> {
   description: string
   parameters: JsonSchema
   kind: 'read' | 'write' | 'destructive'
-  /** Hide from the LLM tool list. Must be explicit and rare — the parity report flags it. */
-  aiExposed?: false
   handler(args: A, ctx: CommandContext): R | Promise<R>
   /** Build the inverse action for the shared undo stack, given the args and result of a successful run. */
   undo?: (args: A, result: R, ctx: CommandContext) => void | Promise<void>
@@ -91,7 +89,6 @@ export async function run<A, R>(name: string, args: A, ctx: CommandContext): Pro
 /** Tool definitions for the LLM — generated, never hand-written. */
 export function toolDefs(): ToolDef[] {
   return allCommands()
-    .filter((c) => c.aiExposed !== false)
     .map((c) => ({ name: c.name, description: c.description, parameters: c.parameters }))
 }
 
@@ -100,7 +97,7 @@ export function commandCoverage() {
   return allCommands().map((c) => ({
     name: c.name,
     kind: c.kind,
-    aiExposed: c.aiExposed !== false,
+    aiExposed: true,
     hasUndo: Boolean(c.undo),
   }))
 }

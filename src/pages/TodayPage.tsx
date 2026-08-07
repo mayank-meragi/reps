@@ -10,7 +10,7 @@ import { useFileQuery } from '@/hooks/useData'
 import { useRunCommand } from '@/lib/commands/useRunCommand'
 import { setSummary, completedSetCount, sessionVolumeKg, formatDuration, lastPerformanceSummary } from '@/lib/sessionStats'
 import { plateMath, STANDARD_BARBELL_KG, STANDARD_PLATE_INVENTORY_KG } from '@/lib/engine'
-import { ExerciseThumb } from '@/components/ExerciseImage'
+import { ExerciseDetailsTrigger } from '@/components/ExerciseImage'
 import ExercisePicker from '@/components/ExercisePicker'
 import RestTimer from '@/components/RestTimer'
 import { useAllExercises } from '@/hooks/useExercises'
@@ -88,38 +88,120 @@ function StartSessionCard() {
   )
 }
 
-// ---- Planned session prompt (active program, nothing started from it yet today) ----
+// ---- Adaptive daily prescription ----
 
-function PlannedSessionPrompt({ programName }: { programName: string }) {
+function GenerateTodayCard({ programName, compact = false }: { programName: string; compact?: boolean }) {
   const runCommand = useRunCommand()
+  const { data: venuesFile } = useFileQuery<VenuesFile>(PATHS.venues, { venues: [] })
+  const venues = venuesFile?.venues ?? []
+  const [considerations, setConsiderations] = useState('')
+  const [availableMinutes, setAvailableMinutes] = useState('')
+  const [venueId, setVenueId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function start() {
+  async function generate() {
     setBusy(true)
     setError(null)
     try {
-      await runCommand('program.start_today', {})
+      await runCommand('program.generate_today', {
+        considerations: considerations.trim() || undefined,
+        availableMinutes: Number(availableMinutes) || undefined,
+        venueId: venueId || undefined,
+      })
+      setConsiderations('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the planned session')
+      setError(e instanceof Error ? e.message : 'Could not prepare today’s session')
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Card className="border-none bg-[var(--ink-900)] text-white">
-      <CardContent className="flex items-center justify-between gap-3 py-4">
+    <Card className={cn('border-none', compact ? 'bg-[var(--surface-sunken)]' : 'bg-[var(--ink-900)] text-white')}>
+      <CardContent className="space-y-3 py-4">
         <div>
-          <p className="text-sm font-semibold">Today's plan is ready</p>
-          <p className="text-xs text-white/70">From "{programName}" — weights computed from your history.</p>
-          {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
+          <p className="text-sm font-semibold">{compact ? 'Revise today' : 'What fits today?'}</p>
+          <p className={cn('text-xs', compact ? 'text-muted-foreground' : 'text-white/70')}>From “{programName}”, adapted to everything you have logged.</p>
         </div>
-        <Button size="sm" className="shrink-0 bg-white text-[var(--ink-900)] hover:bg-white/90" disabled={busy} onClick={() => void start()}>
-          <Sparkles className="size-4" /> {busy ? 'Starting…' : 'Start'}
+        <Input
+          value={considerations}
+          onChange={(event) => setConsiderations(event.target.value)}
+          placeholder='“Not feeling good”, “keep it light”, “weather is bad”, “just walk”…'
+          className={compact ? '' : 'border-white/20 bg-white/10 text-white placeholder:text-white/50'}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={availableMinutes}
+            onChange={(event) => setAvailableMinutes(event.target.value)}
+            placeholder="Minutes available"
+            className={compact ? '' : 'border-white/20 bg-white/10 text-white placeholder:text-white/50'}
+          />
+          <select
+            value={venueId}
+            onChange={(event) => setVenueId(event.target.value)}
+            className={cn('h-9 rounded-md border px-2 text-sm', compact ? 'border-input bg-background' : 'border-white/20 bg-white/10 text-white')}
+          >
+            <option className="text-foreground" value="">Any venue</option>
+            {venues.map((venue) => <option className="text-foreground" key={venue.id} value={venue.id}>{venue.name}</option>)}
+          </select>
+        </div>
+        {error && <p className={cn('text-xs', compact ? 'text-destructive' : 'text-red-300')}>{error}</p>}
+        <Button size="sm" className={cn(!compact && 'bg-white text-[var(--ink-900)] hover:bg-white/90')} disabled={busy} onClick={() => void generate()}>
+          <Sparkles className="size-4" /> {busy ? 'Adapting…' : compact ? 'Regenerate' : 'Generate today'}
         </Button>
       </CardContent>
     </Card>
+  )
+}
+
+function PrescriptionCard({ session, programName }: { session: Session; programName: string }) {
+  const runCommand = useRunCommand()
+  const [busy, setBusy] = useState(false)
+  const target = session.prescription?.target
+
+  async function begin() {
+    setBusy(true)
+    try {
+      await runCommand('session.begin', { sessionId: session.id })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Card className="border-none bg-[var(--ink-900)] text-white">
+        <CardContent className="space-y-3 py-4">
+          <div>
+            <p className="text-xs text-white/60">Today · {programName}</p>
+            <p className="text-lg font-bold">{session.name}</p>
+            <p className="text-xs capitalize text-white/70">{session.modality}{session.focus.length ? ` · ${session.focus.join(' · ')}` : ''}</p>
+          </div>
+          {session.exercises.length > 0 && (
+            <div className="space-y-1 rounded-lg bg-white/10 px-3 py-2">
+              {session.exercises.map((exercise) => <p key={exercise.exerciseId} className="text-sm">{exercise.name} <span className="text-white/60">· {setSummary(exercise.sets)}</span></p>)}
+            </div>
+          )}
+          {target && (
+            <p className="rounded-lg bg-white/10 px-3 py-2 text-sm">
+              {[target.durationMin && `${target.durationMin} min`, target.distanceKm && `${target.distanceKm} km`, target.style, target.effort && `effort ${target.effort}/5`].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          <p className="text-sm text-white/80">{session.prescription?.rationale ?? session.rationale}</p>
+          {session.prescription?.considerations && <p className="text-xs text-white/60">Considered: “{session.prescription.considerations}”</p>}
+          <div className="flex gap-2">
+            <Button className="bg-white text-[var(--ink-900)] hover:bg-white/90" disabled={busy} onClick={() => void begin()}>
+              {busy ? 'Starting…' : 'Start session'}
+            </Button>
+            <Button variant="ghost" className="text-white hover:bg-white/10 hover:text-white" onClick={() => void runCommand('session.delete', { sessionId: session.id })}>Discard</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <GenerateTodayCard programName={programName} compact />
+    </div>
   )
 }
 
@@ -318,7 +400,7 @@ function ExerciseSessionCard({ session, sessions, onRest }: { session: Session; 
         <Card key={ex.exerciseId}>
           <CardContent className="space-y-2 py-3">
             <div className="flex items-center gap-2.5">
-              <ExerciseThumb exercise={byId.get(ex.exerciseId)} className="size-11" />
+              <ExerciseDetailsTrigger exercise={byId.get(ex.exerciseId)} className="size-11" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{ex.name}</p>
                 <p className="text-xs text-muted-foreground">
@@ -378,9 +460,10 @@ function ExerciseSessionCard({ session, sessions, onRest }: { session: Session; 
 
 function CardioSessionCard({ session }: { session: Session }) {
   const runCommand = useRunCommand()
-  const [minutes, setMinutes] = useState('')
-  const [distanceKm, setDistanceKm] = useState('')
-  const [effort, setEffort] = useState<1 | 2 | 3 | 4 | 5>(3)
+  const target = session.prescription?.target
+  const [minutes, setMinutes] = useState(target?.durationMin ? String(target.durationMin) : '')
+  const [distanceKm, setDistanceKm] = useState(target?.distanceKm ? String(target.distanceKm) : '')
+  const [effort, setEffort] = useState<1 | 2 | 3 | 4 | 5>(target?.effort ?? 3)
   const [busy, setBusy] = useState(false)
 
   async function logAndFinish() {
@@ -541,8 +624,7 @@ export default function TodayPage() {
 
   const activeProgramId = programIndex?.activeId ?? null
   const activeProgramMeta = programIndex?.list.find((p) => p.id === activeProgramId)
-  const hasProgramSessionToday = todaySessions.some((s) => s.programId === activeProgramId)
-  const showPlannedPrompt = !active && activeProgramMeta && !hasProgramSessionToday
+  const prescription = active && !active.startedAt && active.prescription ? active : null
 
   return (
     <div className="space-y-3 pb-16">
@@ -552,16 +634,19 @@ export default function TodayPage() {
         <CompletedSessionCard key={s.id} session={s} />
       ))}
 
-      {showPlannedPrompt && <PlannedSessionPrompt programName={activeProgramMeta.name} />}
-
-      {active ? (
+      {prescription && activeProgramMeta ? (
+        <PrescriptionCard session={prescription} programName={activeProgramMeta.name} />
+      ) : active ? (
         isCardioModality(active.modality) ? (
           <CardioSessionCard session={active} />
         ) : (
           <ExerciseSessionCard session={active} sessions={sessions ?? []} onRest={(seconds) => setTimer({ startedAt: Date.now(), seconds })} />
         )
       ) : (
-        <StartSessionCard />
+        <>
+          {activeProgramMeta && <GenerateTodayCard programName={activeProgramMeta.name} />}
+          <StartSessionCard />
+        </>
       )}
 
       <QuickLogWidget />

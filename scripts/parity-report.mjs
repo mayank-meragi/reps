@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Prints every registered command, whether it's exposed to the AI, and
+ * Prints every registered command (all commands are exposed to the AI), and
  * whether it has an undo handler — a cheap, visible coverage check
  * (docs/plan.md §3). Static extraction from source rather than executing
  * the registry, so it needs no build step.
@@ -41,7 +41,7 @@ for (const file of readdirSync(COMMANDS_DIR)) {
     const block = text.slice(braceStart, j + 1)
     const name = block.match(/name:\s*['"]([^'"]+)['"]/)?.[1] ?? '(unknown)'
     const kind = block.match(/kind:\s*['"]([^'"]+)['"]/)?.[1] ?? '(unknown)'
-    const aiExposed = !/aiExposed:\s*false/.test(block)
+    const aiExposed = true
     const hasUndo = /\bundo:\s*(async\s*)?\(/.test(block)
     rows.push({ file, name, kind, aiExposed, hasUndo })
     callRe.lastIndex = j + 1
@@ -59,9 +59,7 @@ for (const r of rows) {
 }
 
 const writes = rows.filter((r) => r.kind !== 'read')
-const hidden = rows.filter((r) => !r.aiExposed)
 const noUndo = writes.filter((r) => !r.hasUndo)
 
 console.log(`\n${rows.length} commands (${writes.length} writes, ${rows.length - writes.length} reads).`)
-if (hidden.length > 0) console.log(`${hidden.length} hidden from the AI: ${hidden.map((r) => r.name).join(', ')}`)
 if (noUndo.length > 0) console.log(`${noUndo.length} writes without undo: ${noUndo.map((r) => r.name).join(', ')}`)

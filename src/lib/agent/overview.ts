@@ -36,6 +36,9 @@ export function buildOverview(qc: QueryClient): string {
 
   const activeLine = active
     ? (() => {
+        if (!active.startedAt && active.prescription) {
+          return `Prescription ready: "${active.name}" (${active.modality}), sessionId=${active.id}. Considerations: ${active.prescription.considerations ?? 'none'}. It has not been started; program.generate_today will revise it, session.begin will start it.`
+        }
         const { done, total } = completedSetCount(active.exercises)
         return `In progress: "${active.name}" (${active.modality}${active.venueId ? `, at venue ${active.venueId}` : ''}), sessionId=${active.id}${total > 0 ? `, ${done}/${total} sets done` : ''}.`
       })()

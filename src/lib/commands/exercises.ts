@@ -71,6 +71,24 @@ export const searchExercisesCommand = defineCommand<SearchArgs, Pick<Exercise, '
   },
 })
 
+export const getExerciseCommand = defineCommand<{ id: string }, Exercise>({
+  name: 'exercise.get',
+  title: 'Get exercise details',
+  description:
+    'Get one exercise by an exact id, including instructions, primary and secondary muscles, equipment, level, category, and available image/GIF/video media. Call exercise.search first when the id is unknown.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: { id: { type: 'string' } },
+    required: ['id'],
+  },
+  handler: async (args, ctx) => {
+    const exercise = (await allExercises(ctx.qc)).find((item) => item.id === args.id)
+    if (!exercise) throw new Error(`Exercise "${args.id}" not found`)
+    return exercise
+  },
+})
+
 interface AddCustomExerciseArgs {
   name: string
   category: string

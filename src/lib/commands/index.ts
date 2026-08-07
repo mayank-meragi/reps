@@ -10,6 +10,8 @@ import './sessions'
 import './programs'
 import './memory'
 import './quicklog'
+import './body'
+import './insights'
 
 export * from './registry'
 export * from './context'

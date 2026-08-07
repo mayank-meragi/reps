@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PATHS } from '@/lib/paths'
 import { useFileQuery } from '@/hooks/useData'
-import { useAllExercises } from '@/hooks/useExercises'
 import { useRunCommand } from '@/lib/commands/useRunCommand'
 import type { Program, ProgramsIndexFile } from '@/lib/types'
 
@@ -47,13 +46,13 @@ function GenerateForm({ hasActive }: { hasActive: boolean }) {
             <Input id="plan-weeks" type="number" value={weeks} onChange={(e) => setWeeks(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="plan-days">Days/week</Label>
+            <Label htmlFor="plan-days">Active days/week</Label>
             <Input id="plan-days" type="number" placeholder="from profile" value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)} />
           </div>
         </div>
         <div className="space-y-1">
           <Label htmlFor="plan-request">Anything specific? (optional)</Label>
-          <Input id="plan-request" placeholder='"more cardio", "only 3 days"' value={request} onChange={(e) => setRequest(e.target.value)} />
+          <Input id="plan-request" placeholder='"prioritize muscle gain", "include weekend hikes"' value={request} onChange={(e) => setRequest(e.target.value)} />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button disabled={busy} onClick={() => void generate()}>
@@ -65,46 +64,43 @@ function GenerateForm({ hasActive }: { hasActive: boolean }) {
 }
 
 function ProgramView({ program }: { program: Program }) {
-  const { data: exercises } = useAllExercises()
-  const byId = new Map(exercises.map((e) => [e.id, e.name]))
-
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">{program.name}</CardTitle>
         <p className="text-xs text-muted-foreground">
-          {program.split} · {program.weeks} weeks · {program.daysPerWeek}/week
-          {program.deloadWeek ? ` · deload week ${program.deloadWeek}` : ''}
+          {program.weeks} weeks · target {program.daysPerWeek} active days/week
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="rounded-lg bg-[var(--surface-sunken)] px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Theme</p>
+          <p className="mt-1 text-sm font-medium">{program.theme}</p>
+        </div>
         {program.rationale && <p className="text-sm text-muted-foreground">{program.rationale}</p>}
         <div className="space-y-2">
-          {program.days.map((day) => (
-            <div key={day.key} className="rounded-lg border border-border px-3 py-2">
+          {program.weeklyTargets.map((target) => (
+            <div key={target.modality} className="rounded-lg border border-border px-3 py-2">
               <p className="text-sm font-semibold">
-                {day.name} <span className="text-xs font-normal capitalize text-muted-foreground">· {day.modality}</span>
+                {target.sessions}× <span className="capitalize">{target.modality}</span>
               </p>
-              {day.focus.length > 0 && <p className="text-xs capitalize text-muted-foreground">{day.focus.join(' · ')}</p>}
-              {day.exercises.length > 0 && (
-                <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                  {day.exercises.map((e, i) => (
-                    <li key={`${e.exerciseId}-${i}`}>
-                      {e.sets}×{e.repRange[0]}-{e.repRange[1]} — {byId.get(e.exerciseId) ?? e.exerciseId}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {day.target && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {[day.target.durationMin && `${day.target.durationMin} min`, day.target.distanceKm && `${day.target.distanceKm}km`, day.target.style]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">{target.intent}</p>
             </div>
           ))}
         </div>
+        {program.priorities.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Priorities</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              {program.priorities.map((priority) => <li key={priority}>{priority}</li>)}
+            </ul>
+          </div>
+        )}
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p><span className="font-semibold text-foreground">Progression:</span> {program.progressionGuidance}</p>
+          <p><span className="font-semibold text-foreground">Recovery:</span> {program.recoveryGuidance}</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Daily sessions are generated on Today using what you actually did and how you feel.</p>
       </CardContent>
     </Card>
   )

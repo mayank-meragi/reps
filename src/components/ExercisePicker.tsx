@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { useAllExercises } from '@/hooks/useExercises'
 import type { Exercise } from '@/lib/types'
-import { ExerciseThumb } from './ExerciseImage'
+import { ExerciseDetailsTrigger } from './ExerciseImage'
 
 interface Props {
   open: boolean
@@ -40,21 +40,20 @@ export default function ExercisePicker({ open, title = 'Add exercise', muscles, 
         <Input autoFocus placeholder="Search exercises…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="space-y-1">
           {list.map((e) => (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => {
-                onPick(e)
-                setSearch('')
-              }}
-              className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] p-2 text-left hover:bg-[var(--surface-sunken)]"
-            >
-              <ExerciseThumb exercise={e} className="size-10" />
-              <div className="min-w-0">
+            <div key={e.id} className="flex items-center gap-2.5 rounded-[var(--radius-md)] p-2 hover:bg-[var(--surface-sunken)]">
+              <ExerciseDetailsTrigger exercise={e} className="size-10" />
+              <button
+                type="button"
+                onClick={() => {
+                  onPick(e)
+                  setSearch('')
+                }}
+                className="min-w-0 flex-1 text-left outline-none focus-visible:underline"
+              >
                 <p className="truncate text-sm font-medium text-[var(--text-strong)]">{e.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{e.primaryMuscles.join(', ')}</p>
-              </div>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
       </DialogContent>

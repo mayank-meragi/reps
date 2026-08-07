@@ -149,6 +149,22 @@ export const startSessionCommand = defineCommand<StartArgs, Session>({
   summarize: (args) => `Started ${DEFAULT_NAME[args.modality].toLowerCase()}`,
 })
 
+// ---- session.begin ----
+
+export const beginSessionCommand = defineCommand<{ sessionId: string }, Session>({
+  name: 'session.begin',
+  title: 'Begin prescribed session',
+  description: 'Start an already-generated, unstarted session prescription. Use program.generate_today first when no prescription exists.',
+  kind: 'write',
+  parameters: { type: 'object', properties: { sessionId: { type: 'string' } }, required: ['sessionId'] },
+  handler: (args, ctx) =>
+    mutateSession(ctx.qc, args.sessionId, (s) => {
+      if (s.endedAt) throw new Error('This session is already finished')
+      return s.startedAt ? s : { ...s, startedAt: new Date().toISOString() }
+    }),
+  summarize: (_args, result) => `Started "${result.name}"`,
+})
+
 // ---- session.add_exercise ----
 
 interface AddExerciseArgs {
