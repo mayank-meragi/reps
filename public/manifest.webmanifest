@@ -1,0 +1,10 @@
+{
+  "name": "Reps",
+  "short_name": "Reps",
+  "description": "AI-first training generator and tracker, stored in your own GitHub repo",
+  "start_url": "/reps/",
+  "scope": "/reps/",
+  "display": "standalone",
+  "background_color": "#eef0f5",
+  "theme_color": "#eef0f5"
+}
