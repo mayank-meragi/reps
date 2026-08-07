@@ -5,6 +5,8 @@
  */
 import './profile'
 import './venues'
+import './exercises'
+import './sessions'
 
 export * from './registry'
 export * from './context'

@@ -106,36 +106,26 @@ function VenueRow({ venue }: { venue: Venue }) {
   )
 }
 
-export default function HomePage() {
+export default function VenuesManager() {
   const { data } = useFileQuery<VenuesFile>(PATHS.venues, { venues: [] })
   const venues = data?.venues ?? []
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Today</h1>
-        <p className="text-sm text-muted-foreground">
-          The programmer, the tracker, and the assistant land here in later milestones. This scaffold proves the
-          command spine end to end: adding a venue below goes through the same <code>run()</code> path the AI will
-          use.
-        </p>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <MapPin className="size-4" /> Venues
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {venues.length === 0 && <p className="text-sm text-muted-foreground">No venues yet — add where you train.</p>}
-          <div className="space-y-2">
-            {venues.map((v) => (
-              <VenueRow key={v.id} venue={v} />
-            ))}
-          </div>
-          <AddVenueForm />
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <MapPin className="size-4" /> Venues
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {venues.length === 0 && <p className="text-sm text-muted-foreground">No venues yet — add where you train.</p>}
+        <div className="space-y-2">
+          {venues.map((v) => (
+            <VenueRow key={v.id} venue={v} />
+          ))}
+        </div>
+        <AddVenueForm />
+      </CardContent>
+    </Card>
   )
 }

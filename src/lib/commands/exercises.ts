@@ -1,0 +1,123 @@
+import type { QueryClient } from '@tanstack/react-query'
+import { PATHS } from '@/lib/paths'
+import { fileQueryKey } from '@/lib/queryKeys'
+import { getCachedFile } from '@/lib/cache'
+import { updateFile } from '@/lib/sync'
+import { fetchExerciseLibrary } from '@/lib/exerciseDb'
+import type { CustomExercisesFile, Exercise, ExerciseLevel } from '@/lib/types'
+import { defineCommand } from './registry'
+
+const emptyCustom: CustomExercisesFile = { exercises: [] }
+
+export function getCustomExercises(qc: QueryClient): Exercise[] {
+  return (
+    qc.getQueryData<CustomExercisesFile>(fileQueryKey(PATHS.customExercises))?.exercises ??
+    getCachedFile<CustomExercisesFile>(PATHS.customExercises)?.content.exercises ??
+    []
+  )
+}
+
+/** Library + user-created exercises, the one place both are combined. */
+export async function allExercises(qc: QueryClient): Promise<Exercise[]> {
+  const library = await fetchExerciseLibrary()
+  return [...library, ...getCustomExercises(qc)]
+}
+
+interface SearchArgs {
+  text?: string
+  muscle?: string
+  equipment?: string
+  category?: string
+  level?: ExerciseLevel
+  limit?: number
+}
+
+export const searchExercisesCommand = defineCommand<SearchArgs, Pick<Exercise, 'id' | 'name' | 'category' | 'equipment' | 'primaryMuscles' | 'level'>[]>({
+  name: 'exercise.search',
+  title: 'Search exercise library',
+  description:
+    'Search the exercise library (free-exercise-db plus any user-created exercises) by name text, primary muscle, equipment, category (strength/cardio/stretching/...), or level. Returns compact rows — use this before programming or logging so exercise ids are valid.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: {
+      text: { type: 'string', description: 'substring match against the exercise name' },
+      muscle: { type: 'string' },
+      equipment: { type: 'string' },
+      category: { type: 'string' },
+      level: { type: 'string', enum: ['beginner', 'intermediate', 'expert'] },
+      limit: { type: 'number', description: 'default 30' },
+    },
+  },
+  handler: async (args, ctx) => {
+    const exercises = await allExercises(ctx.qc)
+    const text = args.text?.toLowerCase()
+    const filtered = exercises.filter((e) => {
+      if (text && !e.name.toLowerCase().includes(text)) return false
+      if (args.muscle && !e.primaryMuscles.includes(args.muscle) && !e.secondaryMuscles.includes(args.muscle)) return false
+      if (args.equipment && e.equipment !== args.equipment) return false
+      if (args.category && e.category !== args.category) return false
+      if (args.level && e.level !== args.level) return false
+      return true
+    })
+    return filtered.slice(0, args.limit ?? 30).map((e) => ({
+      id: e.id,
+      name: e.name,
+      category: e.category,
+      equipment: e.equipment,
+      primaryMuscles: e.primaryMuscles,
+      level: e.level,
+    }))
+  },
+})
+
+interface AddCustomExerciseArgs {
+  name: string
+  category: string
+  level: ExerciseLevel
+  equipment?: string
+  primaryMuscles: string[]
+  secondaryMuscles?: string[]
+  aliases?: string[]
+}
+
+export const addCustomExerciseCommand = defineCommand<AddCustomExerciseArgs, Exercise>({
+  name: 'exercise.add_custom',
+  title: 'Add custom exercise',
+  description: "Add an exercise that isn't in the standard library — a gym-specific machine, a variation, etc.",
+  kind: 'write',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      category: { type: 'string', description: "e.g. 'strength', 'cardio', 'stretching'" },
+      level: { type: 'string', enum: ['beginner', 'intermediate', 'expert'] },
+      equipment: { type: 'string' },
+      primaryMuscles: { type: 'array', items: { type: 'string' } },
+      secondaryMuscles: { type: 'array', items: { type: 'string' } },
+      aliases: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['name', 'category', 'level', 'primaryMuscles'],
+  },
+  handler: (args, ctx) => {
+    const exercise: Exercise = {
+      id: 'custom-' + args.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+      name: args.name,
+      category: args.category,
+      level: args.level,
+      equipment: args.equipment ?? null,
+      primaryMuscles: args.primaryMuscles,
+      secondaryMuscles: args.secondaryMuscles ?? [],
+      instructions: [],
+      images: [],
+      custom: true,
+      aliases: args.aliases,
+    }
+    const next = updateFile<CustomExercisesFile>(PATHS.customExercises, emptyCustom, (current) => ({
+      exercises: [...current.exercises.filter((e) => e.id !== exercise.id), exercise],
+    }))
+    ctx.qc.setQueryData(fileQueryKey(PATHS.customExercises), next)
+    return exercise
+  },
+  summarize: (args) => `Added custom exercise "${args.name}"`,
+})

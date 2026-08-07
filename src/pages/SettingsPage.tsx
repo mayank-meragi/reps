@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { getConfig, setConfig, clearFileCache } from '@/lib/cache'
 import { keyConfigFor, modelConfigFor, PROVIDER_LABEL, PROVIDERS, DEFAULT_MODEL, type Provider } from '@/lib/llm'
 import { commandCoverage } from '@/lib/commands'
+import VenuesManager from '@/components/VenuesManager'
 
 export default function SettingsPage() {
   const [provider, setProvider] = useState<Provider>((getConfig('aiProvider') as Provider) || 'gemini')
@@ -78,6 +79,8 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <VenuesManager />
 
       <Card>
         <CardHeader>

@@ -42,7 +42,7 @@ for (const file of readdirSync(COMMANDS_DIR)) {
     const name = block.match(/name:\s*['"]([^'"]+)['"]/)?.[1] ?? '(unknown)'
     const kind = block.match(/kind:\s*['"]([^'"]+)['"]/)?.[1] ?? '(unknown)'
     const aiExposed = !/aiExposed:\s*false/.test(block)
-    const hasUndo = /\bundo:\s*\(/.test(block)
+    const hasUndo = /\bundo:\s*(async\s*)?\(/.test(block)
     rows.push({ file, name, kind, aiExposed, hasUndo })
     callRe.lastIndex = j + 1
   }
