@@ -7,6 +7,7 @@ import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import Onboarding from '@/components/Onboarding'
 import ActionToast from '@/components/ActionToast'
+import Assistant from '@/components/Assistant'
 import { isConfigured } from '@/lib/cache'
 import { initSync, flush } from '@/lib/sync'
 import { useSyncState } from '@/hooks/useSyncState'
@@ -56,6 +57,7 @@ function Shell() {
         </Routes>
       </main>
       <ActionToast />
+      <Assistant />
       <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-20 px-8 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
         <div className="pointer-events-auto mx-auto flex max-w-xs items-center justify-between rounded-full bg-card p-1.5 shadow-lg ring-1 ring-foreground/[0.06]">
           {NAV.map((item) => (

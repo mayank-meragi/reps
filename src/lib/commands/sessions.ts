@@ -12,7 +12,7 @@ import { allExercises } from './exercises'
 
 const emptySessions: Session[] = []
 
-function readSessionsMonth(qc: QueryClient, month: string): Session[] {
+export function readSessionsMonth(qc: QueryClient, month: string): Session[] {
   return (
     qc.getQueryData<Session[]>(fileQueryKey(PATHS.sessions(month))) ??
     getCachedFile<Session[]>(PATHS.sessions(month))?.content ??
