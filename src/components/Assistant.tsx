@@ -44,6 +44,12 @@ export default function Assistant() {
     if (open) inputRef.current?.focus()
   }, [open])
 
+  useEffect(() => {
+    const openCoach = () => setOpen(true)
+    window.addEventListener('reps:open-assistant', openCoach)
+    return () => window.removeEventListener('reps:open-assistant', openCoach)
+  }, [])
+
   function push(item: ChatItem) {
     setItems((prev) => [...prev, item])
   }
@@ -100,17 +106,6 @@ export default function Assistant() {
 
   return (
     <>
-      {!open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Open assistant"
-          className="fixed right-4 bottom-24 z-30 flex size-13 items-center justify-center rounded-full bg-[var(--ink-900)] text-white shadow-xl transition-transform active:scale-90 md:right-8 md:bottom-8"
-        >
-          <Sparkles className="size-5" />
-        </button>
-      )}
-
       {open && (
         <div className="fixed inset-x-0 bottom-0 z-40 md:inset-x-auto md:right-8 md:bottom-8 md:w-[420px]">
           <div className="mx-auto flex max-h-[80svh] w-full flex-col overflow-hidden rounded-t-[28px] bg-[var(--surface-card)] shadow-xl ring-1 ring-[var(--border-subtle)] md:h-[600px] md:max-h-[80vh] md:rounded-[28px]">

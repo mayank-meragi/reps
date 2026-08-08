@@ -6,6 +6,7 @@ import { updateFile } from '@/lib/sync'
 import { fetchExerciseLibrary } from '@/lib/exerciseDb'
 import type { CustomExercisesFile, Exercise, ExerciseLevel } from '@/lib/types'
 import { defineCommand } from './registry'
+import { getVenues } from './venues'
 
 const emptyCustom: CustomExercisesFile = { exercises: [] }
 
@@ -86,6 +87,96 @@ export const getExerciseCommand = defineCommand<{ id: string }, Exercise>({
     const exercise = (await allExercises(ctx.qc)).find((item) => item.id === args.id)
     if (!exercise) throw new Error(`Exercise "${args.id}" not found`)
     return exercise
+  },
+})
+
+export interface ExerciseFacets {
+  muscles: string[]
+  equipment: string[]
+  categories: string[]
+  levels: string[]
+  total: number
+}
+
+export const getExerciseFacetsCommand = defineCommand<Record<string, never>, ExerciseFacets>({
+  name: 'exercise.facets',
+  title: 'List exercise catalog filters',
+  description:
+    'List the exact muscle, equipment, category, and level values supported by the exercise catalog. Call this before exercise.search when you need to discover valid filters rather than guessing them.',
+  kind: 'read',
+  parameters: { type: 'object', properties: {} },
+  handler: async (_args, ctx) => {
+    const exercises = await allExercises(ctx.qc)
+    const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort()
+    return {
+      muscles: unique(exercises.flatMap((exercise) => [...exercise.primaryMuscles, ...exercise.secondaryMuscles])),
+      equipment: unique(exercises.flatMap((exercise) => exercise.equipment ? [exercise.equipment] : [])),
+      categories: unique(exercises.map((exercise) => exercise.category)),
+      levels: unique(exercises.map((exercise) => exercise.level)),
+      total: exercises.length,
+    }
+  },
+})
+
+interface FindSubstitutesArgs {
+  exerciseId: string
+  venueId?: string
+  muscle?: string
+  equipment?: string
+  limit?: number
+}
+
+type SubstituteCandidate = Pick<Exercise, 'id' | 'name' | 'category' | 'equipment' | 'primaryMuscles' | 'secondaryMuscles' | 'level'>
+
+export const findExerciseSubstitutesCommand = defineCommand<FindSubstitutesArgs, SubstituteCandidate[]>({
+  name: 'exercise.find_substitutes',
+  title: 'Find exercise substitution candidates',
+  description:
+    'Filter the exercise catalog to plausible replacements for an exercise, optionally constrained to a venue, muscle, or equipment. This tool supplies candidates only: the AI must inspect context and choose the best replacement itself.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: {
+      exerciseId: { type: 'string' },
+      venueId: { type: 'string' },
+      muscle: { type: 'string', description: 'optional muscle to prioritize instead of the original primary muscles' },
+      equipment: { type: 'string', description: 'optional exact equipment constraint' },
+      limit: { type: 'number', description: 'default 20' },
+    },
+    required: ['exerciseId'],
+  },
+  handler: async (args, ctx) => {
+    const exercises = await allExercises(ctx.qc)
+    const original = exercises.find((exercise) => exercise.id === args.exerciseId)
+    if (!original) throw new Error(`Exercise "${args.exerciseId}" not found`)
+
+    const venue = args.venueId ? getVenues(ctx.qc).find((item) => item.id === args.venueId) : undefined
+    if (args.venueId && !venue) throw new Error(`Venue "${args.venueId}" not found`)
+    const targetMuscles = args.muscle ? [args.muscle] : original.primaryMuscles
+    const availableEquipment = new Set(venue?.equipment ?? [])
+
+    return exercises
+      .filter((exercise) => {
+        if (exercise.id === original.id || exercise.category !== original.category) return false
+        if (args.equipment && exercise.equipment !== args.equipment) return false
+        if (venue && exercise.equipment && exercise.equipment !== 'body only' && !availableEquipment.has(exercise.equipment)) return false
+        return [...exercise.primaryMuscles, ...exercise.secondaryMuscles].some((muscle) => targetMuscles.includes(muscle))
+      })
+      .sort((a, b) => {
+        const aPrimary = a.primaryMuscles.filter((muscle) => targetMuscles.includes(muscle)).length
+        const bPrimary = b.primaryMuscles.filter((muscle) => targetMuscles.includes(muscle)).length
+        return bPrimary - aPrimary || a.name.localeCompare(b.name)
+      })
+      .slice(0, args.limit ?? 20)
+      .map(({ id, name, category, equipment, primaryMuscles, secondaryMuscles, level }) => ({
+        id,
+        name,
+        category,
+        equipment,
+        primaryMuscles,
+        secondaryMuscles,
+        level,
+      }))
   },
 })
 

@@ -124,6 +124,34 @@ export interface ProgramsIndexFile {
   list: { id: string; name: string; status: ProgramStatus; startDate: string }[]
 }
 
+export interface ProgramAdjustment {
+  theme?: string
+  priorities?: string[]
+  weeklyTargets?: WeeklyTrainingTarget[]
+  progressionGuidance?: string
+  recoveryGuidance?: string
+  daysPerWeek?: number
+  rationale: string
+}
+
+export interface WeeklyReview {
+  id: string
+  weekStart: string
+  generatedAt: string
+  summary: string
+  wins: string[]
+  concerns: string[]
+  nextWeekPriorities: string[]
+  evidence: string[]
+  consideredSessionIds: string[]
+  proposedAdjustment?: ProgramAdjustment
+  updatedAt: string
+}
+
+export interface WeeklyReviewsFile {
+  reviews: WeeklyReview[]
+}
+
 // ---- Execution ----
 
 export type SessionSource = 'program' | 'ai-adhoc' | 'manual' | 'quick-log'
@@ -158,6 +186,8 @@ export interface SessionExercise {
   /** Set when this exercise replaced a planned one (venue swap, injury, preference) */
   swappedFrom?: string
   notes?: string
+  /** User-authored note for this exercise in this specific session. */
+  userNote?: string
 }
 
 export interface CardioResult {

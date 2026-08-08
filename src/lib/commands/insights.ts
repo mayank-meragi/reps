@@ -10,6 +10,13 @@ import { cardioPaceTrend, cardioWeeklyTrend, type CardioWeekPoint, type PacePoin
 import { sessionDensity, type SessionDensityPoint } from '@/lib/insights/density'
 import { muscleBalance, type BalanceRatio } from '@/lib/insights/balance'
 import { strengthWeightTrend, type StrengthWeightPoint } from '@/lib/insights/combined'
+import {
+  MUSCLE_REGIONS,
+  muscleMapSnapshot,
+  type MuscleMapDatum,
+  type MuscleMapMode,
+  type MuscleRegion,
+} from '@/lib/insights/muscleMap'
 import type { Modality, Session } from '@/lib/types'
 import { defineCommand } from './registry'
 import { getProfile } from './profile'
@@ -145,4 +152,60 @@ export const getStrengthWeightTrendCommand = defineCommand<{ exerciseId: string 
   kind: 'read',
   parameters: { type: 'object', properties: { exerciseId: { type: 'string' } }, required: ['exerciseId'] },
   handler: async (args, ctx) => strengthWeightTrend(args.exerciseId, await allSessions(), getBodyMetrics(ctx.qc)),
+})
+
+interface MuscleMapArgs {
+  mode: MuscleMapMode
+  days?: number
+}
+
+async function muscleMapFor(args: MuscleMapArgs, ctx: Parameters<typeof getProfile>[0]): Promise<MuscleMapDatum[]> {
+  const [sessions, exercises] = [await allSessions(), await allExercises(ctx)]
+  return muscleMapSnapshot(
+    sessions,
+    effectiveTodayISO(),
+    new Map(exercises.map((exercise) => [exercise.id, exercise])),
+    args.mode,
+    args.days,
+  )
+}
+
+export const getMuscleMapCommand = defineCommand<MuscleMapArgs, MuscleMapDatum[]>({
+  name: 'insights.muscle_map',
+  title: 'Get muscle map',
+  description:
+    'Read the exact per-muscle values shown on the interactive body map. Modes: target = prescribed sets in today\'s sessions; load = completed direct and secondary work over the trailing window; recovery = estimated readiness from recent training; progress = median exercise-specific e1RM change where comparable data exists. Values include evidence and confidence—do not describe an estimated recovery score as measured biology.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: {
+      mode: { type: 'string', enum: ['target', 'load', 'recovery', 'progress'] },
+      days: { type: 'number', description: 'Trailing window. Defaults to 7, or 84 for progress; ignored for today target mode.' },
+    },
+    required: ['mode'],
+  },
+  handler: (args, ctx) => muscleMapFor(args, ctx.qc),
+})
+
+export const getMuscleDetailCommand = defineCommand<MuscleMapArgs & { muscle: MuscleRegion }, MuscleMapDatum>({
+  name: 'insights.muscle_detail',
+  title: 'Get muscle detail',
+  description:
+    'Inspect one body-map muscle region with its direct and secondary sets, contributing exercises, trend evidence, recovery estimate, and confidence. Call insights.muscle_map first when the exact canonical muscle id is unknown.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: {
+      muscle: { type: 'string', enum: [...MUSCLE_REGIONS] },
+      mode: { type: 'string', enum: ['target', 'load', 'recovery', 'progress'] },
+      days: { type: 'number', description: 'Trailing window. Defaults to 7, or 84 for progress.' },
+    },
+    required: ['muscle', 'mode'],
+  },
+  handler: async (args, ctx) => {
+    if (!MUSCLE_REGIONS.includes(args.muscle)) throw new Error(`Unknown muscle region: ${args.muscle}`)
+    const row = (await muscleMapFor(args, ctx.qc)).find((datum) => datum.muscle === args.muscle)
+    if (!row) throw new Error(`No muscle detail available for ${args.muscle}`)
+    return row
+  },
 })

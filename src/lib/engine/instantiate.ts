@@ -54,6 +54,7 @@ export function instantiateExercise(
     mode: 'reps',
     restSeconds: planned.restSeconds,
     sets,
+    notes: planned.notes,
   }
 }
 

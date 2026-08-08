@@ -8,6 +8,7 @@ import { PATHS } from '@/lib/paths'
 import { useFileQuery } from '@/hooks/useData'
 import { useRunCommand } from '@/lib/commands/useRunCommand'
 import type { Program, ProgramsIndexFile } from '@/lib/types'
+import WeeklyCoachCard from '@/components/WeeklyCoachCard'
 
 function GenerateForm({ hasActive }: { hasActive: boolean }) {
   const runCommand = useRunCommand()
@@ -116,6 +117,7 @@ export default function PlanPage() {
   return (
     <div className="space-y-3 pb-16">
       <h1 className="text-xl font-semibold tracking-tight">Plan</h1>
+      <WeeklyCoachCard />
       {activeProgram && <ProgramView program={activeProgram} />}
       <GenerateForm hasActive={Boolean(activeProgram)} />
       {others.length > 0 && (

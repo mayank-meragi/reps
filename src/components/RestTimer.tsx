@@ -5,10 +5,11 @@ interface Props {
   /** Timestamp (ms) the rest started + duration; null hides the timer. */
   timer: { startedAt: number; seconds: number } | null
   onDone: () => void
+  onAdjust?: (deltaSeconds: number) => void
 }
 
 /** Floating rest countdown, pinned above the bottom nav during a session. */
-export default function RestTimer({ timer, onDone }: Props) {
+export default function RestTimer({ timer, onDone, onAdjust }: Props) {
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -39,6 +40,12 @@ export default function RestTimer({ timer, onDone }: Props) {
           <p className="relative flex-1 text-sm font-semibold">
             Rest — {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
           </p>
+          {onAdjust && (
+            <>
+              <button type="button" onClick={() => onAdjust(-15)} className="relative rounded-full px-2 py-1 text-xs font-bold hover:bg-white/10">−15</button>
+              <button type="button" onClick={() => onAdjust(15)} className="relative rounded-full px-2 py-1 text-xs font-bold hover:bg-white/10">+15</button>
+            </>
+          )}
           <button type="button" onClick={onDone} aria-label="Skip rest" className="relative rounded-full p-1 hover:bg-white/10">
             <X className="size-4" />
           </button>

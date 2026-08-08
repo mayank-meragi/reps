@@ -9,7 +9,7 @@ export default function ActionToast() {
   if (!toast) return null
 
   return (
-    <div className="fixed inset-x-0 bottom-20 z-30 flex justify-center px-4 md:bottom-6">
+    <div className="fixed inset-x-0 bottom-32 z-30 flex justify-center px-4 md:bottom-6">
       <div className="flex items-center gap-3 rounded-full bg-[var(--ink-900)] py-2 pl-4 pr-2 text-sm text-white shadow-lg">
         <span>{toast.label}</span>
         {toast.undo && (

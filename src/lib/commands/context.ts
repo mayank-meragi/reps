@@ -13,4 +13,6 @@ export interface CommandContext {
   source: 'ui' | 'ai' | 'system'
   /** Report a completed write so the UI can render an action card with undo. */
   onAction?: (action: AgentAction) => void
+  /** Report meaningful progress from a multi-step AI workflow. */
+  onProgress?: (message: string) => void
 }

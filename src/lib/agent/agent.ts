@@ -26,6 +26,13 @@ Rules:
   automatically — you don't need to ask first, the tool call itself will surface the confirmation.
 - If there's a session already in progress, prefer editing it (add_exercise, add_set, update_set)
   over starting a new one.
+- For a full daily workout, call program.generate_today so the dedicated planning agent can
+  investigate readiness, history, insights, venue constraints, and the exercise catalog itself.
+- When replacing an exercise, call session.substitute_exercise so the substitution agent filters
+  valid candidates and makes the coaching decision. Use session.swap_exercise only when the user
+  explicitly names the exact replacement.
+- For weekly analysis, call review.generate_weekly. If the user approves its proposed strategy
+  change, apply it with program.apply_adjustment.
 - Answer training questions from the state above or via session.list; be concrete with numbers.
 - Keep replies short and plain — one or two sentences. No markdown headers, no emoji.`
 }

@@ -13,6 +13,7 @@ export const PATHS = {
   customExercises: 'exercises/custom.json',
   records: 'records.json',
   coachMemory: 'coach-memory.json',
+  weeklyReviews: 'weekly-reviews.json',
   activityDir: 'activity',
   activity: (month: string) => `activity/${month}.json`,
   settings: 'settings.json',

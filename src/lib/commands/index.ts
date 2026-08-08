@@ -12,6 +12,7 @@ import './memory'
 import './quicklog'
 import './body'
 import './insights'
+import './reviews'
 
 export * from './registry'
 export * from './context'

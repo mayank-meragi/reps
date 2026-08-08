@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -34,6 +34,8 @@ import { muscleBalance } from '@/lib/insights/balance'
 import { strengthWeightTrend } from '@/lib/insights/combined'
 import type { VolumeLandmarks } from '@/lib/engine'
 import type { BodyMetricsFile, Modality } from '@/lib/types'
+
+const MuscleMap = lazy(() => import('@/components/MuscleMap'))
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -187,6 +189,26 @@ export default function InsightsPage() {
         <StatTile label="Streak" value={String(adherence.streak)} sub="sessions" />
         <StatTile label="Active days" value={String(active)} sub="last 7 days" />
       </div>
+
+      <Card className="border-none bg-[var(--surface-sunken)] shadow-none ring-1 ring-[var(--border-subtle)]">
+        <CardContent className="py-4">
+          <p className="reps-eyebrow">Training readout</p>
+          <p className="mt-1 text-base font-bold">
+            {adherence.completedThisWeek >= adherence.target
+              ? 'You have reached this week’s training target.'
+              : `${Math.max(0, adherence.target - adherence.completedThisWeek)} session${adherence.target - adherence.completedThisWeek === 1 ? '' : 's'} remain this week.`}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {stalled.length > 0
+              ? `${stalled.length} exercise${stalled.length === 1 ? '' : 's'} may need a progression change.`
+              : prs.length > 0 ? `${prs.length} current strength record${prs.length === 1 ? '' : 's'} tracked.` : 'Complete more sessions to unlock progression signals.'}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Suspense fallback={<div className="h-[34rem] animate-pulse rounded-[1.4rem] bg-[var(--ink-950)] motion-reduce:animate-none" aria-label="Loading muscle map" />}>
+        <MuscleMap sessions={all} exercises={exercises} today={today} />
+      </Suspense>
 
       {all.length > 0 && (
         <Card>

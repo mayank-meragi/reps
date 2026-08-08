@@ -7,6 +7,7 @@ import { listDir } from '@/lib/github'
 import { currentMonthKey, effectiveTodayISO, monthKey } from '@/lib/dates'
 import { isTimedCategory } from '@/lib/exerciseDb'
 import { doubleProgression, performedSets } from '@/lib/engine'
+import { runToolAgent } from '@/lib/agent/toolAgent'
 import type { CardioResult, Modality, SetEntry, SetType, Session, SessionExercise } from '@/lib/types'
 import { defineCommand } from './registry'
 import { allExercises } from './exercises'
@@ -236,6 +237,140 @@ export const removeExerciseCommand = defineCommand<{ sessionId: string; exercise
   summarize: (_args, result) => (result.removed ? `Removed ${result.removed.name}` : 'Removed exercise'),
 })
 
+// ---- session.swap_exercise ----
+
+interface SwapExerciseArgs {
+  sessionId: string
+  fromExerciseId: string
+  toExerciseId: string
+  reason?: string
+  explanation?: string
+}
+
+interface SwapExerciseResult {
+  session: Session
+  previous: SessionExercise
+  replacement: SessionExercise
+  index: number
+}
+
+export const swapExerciseCommand = defineCommand<SwapExerciseArgs, SwapExerciseResult>({
+  name: 'session.swap_exercise',
+  title: 'Substitute an exercise',
+  description:
+    'Replace an unperformed exercise in a session with an exercise chosen from exercise.find_substitutes. Preserves the planned set count and target intent while recalculating a useful starting load for the replacement.',
+  kind: 'write',
+  parameters: {
+    type: 'object',
+    properties: {
+      sessionId: { type: 'string' },
+      fromExerciseId: { type: 'string' },
+      toExerciseId: { type: 'string' },
+      reason: { type: 'string', description: 'constraint or preference that caused the substitution' },
+      explanation: { type: 'string', description: 'brief coaching explanation for why this replacement fits' },
+    },
+    required: ['sessionId', 'fromExerciseId', 'toExerciseId'],
+  },
+  handler: async (args, ctx) => {
+    const library = await allExercises(ctx.qc)
+    const replacementExercise = library.find((exercise) => exercise.id === args.toExerciseId)
+    if (!replacementExercise) throw new Error(`Unknown replacement exercise: ${args.toExerciseId}`)
+
+    const located = await locateSession(ctx.qc, args.sessionId)
+    if (!located) throw new Error(`Session ${args.sessionId} not found`)
+    const index = located.session.exercises.findIndex((exercise) => exercise.exerciseId === args.fromExerciseId)
+    if (index < 0) throw new Error(`Exercise ${args.fromExerciseId} is not in this session`)
+    const previous = located.session.exercises[index]
+    if (previous.sets.some((set) => set.done)) throw new Error('A started exercise cannot be substituted because it already contains logged work')
+
+    const venue = located.session.venueId ? getVenues(ctx.qc).find((item) => item.id === located.session.venueId) : undefined
+    if (venue && replacementExercise.equipment && replacementExercise.equipment !== 'body only' && !venue.equipment.includes(replacementExercise.equipment)) {
+      throw new Error(`${replacementExercise.name} needs ${replacementExercise.equipment}, which is not available at ${venue.name}`)
+    }
+
+    const timed = isTimedCategory(replacementExercise.category)
+    let sets = defaultSets(ctx.qc, replacementExercise.id, replacementExercise.category)
+    if (!timed && previous.sets.length > 0) {
+      const base = sets[0]
+      sets = previous.sets.map((set) => ({
+        type: set.type,
+        targetReps: set.targetReps ?? base?.targetReps,
+        targetWeight: base?.targetWeight,
+        targetRir: set.targetRir,
+        done: false,
+      }))
+    }
+    const notes = [args.explanation, args.reason ? `Reason: ${args.reason}` : undefined].filter(Boolean).join(' · ') || undefined
+    const replacement: SessionExercise = {
+      exerciseId: replacementExercise.id,
+      name: replacementExercise.name,
+      mode: timed ? 'duration' : 'reps',
+      restSeconds: previous.restSeconds ?? (timed ? 30 : 90),
+      sets,
+      swappedFrom: previous.exerciseId,
+      notes,
+    }
+    const session = await mutateSession(ctx.qc, args.sessionId, (current) => ({
+      ...current,
+      exercises: current.exercises.map((exercise, exerciseIndex) => exerciseIndex === index ? replacement : exercise),
+    }))
+    return { session, previous, replacement, index }
+  },
+  undo: async (args, result, ctx) => {
+    await mutateSession(ctx.qc, args.sessionId, (session) => ({
+      ...session,
+      exercises: session.exercises.map((exercise, index) => index === result.index ? result.previous : exercise),
+    }))
+  },
+  summarize: (_args, result) => `Replaced ${result.previous.name} with ${result.replacement.name}`,
+})
+
+export const getSessionCommand = defineCommand<{ sessionId: string }, Session>({
+  name: 'session.get',
+  title: 'Get session details',
+  description: 'Get one exact session, including venue, prescription, exercises, targets and logged results.',
+  kind: 'read',
+  parameters: { type: 'object', properties: { sessionId: { type: 'string' } }, required: ['sessionId'] },
+  handler: async (args, ctx) => {
+    const located = await locateSession(ctx.qc, args.sessionId)
+    if (!located) throw new Error(`Session ${args.sessionId} not found`)
+    return located.session
+  },
+})
+
+interface AgentSubstituteArgs {
+  sessionId: string
+  exerciseId: string
+  reason?: string
+}
+
+export const agentSubstituteExerciseCommand = defineCommand<AgentSubstituteArgs, SwapExerciseResult>({
+  name: 'session.substitute_exercise',
+  title: 'Ask AI to substitute an exercise',
+  description:
+    'Let the AI investigate the session, exercise, venue and valid catalog candidates, choose the best substitution, explain it, and perform the swap.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: {
+      sessionId: { type: 'string' },
+      exerciseId: { type: 'string' },
+      reason: { type: 'string', description: 'why a replacement is wanted, such as equipment unavailable, pain, preference, or variety' },
+    },
+    required: ['sessionId', 'exerciseId'],
+  },
+  handler: (args, ctx) => runToolAgent<SwapExerciseResult>({
+    ctx,
+    finalTool: 'session.swap_exercise',
+    allowedTools: [
+      'session.get', 'exercise.get', 'exercise.find_substitutes', 'exercise.search',
+      'venue.list', 'profile.get', 'body.get_readiness', 'session.swap_exercise',
+    ],
+    system: `You are Reps' exercise substitution agent. Inspect the exact session and original exercise first. Use exercise.find_substitutes with the session venue to get valid candidates. You may inspect candidate details. Choose the replacement yourself based on movement intent, muscles, equipment, user limitations and the stated reason. Do not ask the user to choose from a list. Finish only with session.swap_exercise, passing a concise coaching explanation. Never replace an exercise with itself.`,
+    user: `Substitute exerciseId ${args.exerciseId} in session ${args.sessionId}. Reason: ${args.reason?.trim() || 'The user requested the best appropriate alternative.'}`,
+  }),
+})
+
 // ---- session.add_set ----
 
 interface AddSetArgs {
@@ -282,6 +417,29 @@ export const addSetCommand = defineCommand<AddSetArgs, Session>({
       }),
     })),
   summarize: () => 'Added a set',
+})
+
+export const updateExerciseNoteCommand = defineCommand<{ sessionId: string; exerciseId: string; note: string }, Session>({
+  name: 'session.update_exercise_note',
+  title: 'Update exercise note',
+  description: 'Add, change, or clear the user note attached to an exercise in a specific session.',
+  kind: 'write',
+  parameters: {
+    type: 'object',
+    properties: {
+      sessionId: { type: 'string' },
+      exerciseId: { type: 'string' },
+      note: { type: 'string' },
+    },
+    required: ['sessionId', 'exerciseId', 'note'],
+  },
+  handler: (args, ctx) => mutateSession(ctx.qc, args.sessionId, (session) => ({
+    ...session,
+    exercises: session.exercises.map((exercise) => exercise.exerciseId === args.exerciseId
+      ? { ...exercise, userNote: args.note.trim() || undefined }
+      : exercise),
+  })),
+  summarize: (args) => args.note.trim() ? 'Updated exercise note' : 'Cleared exercise note',
 })
 
 // ---- session.update_set ----

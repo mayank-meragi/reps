@@ -76,6 +76,11 @@ export function nextTarget(opts: {
   if (opts.loadRule === 'e1rm-pct' && opts.knownE1rm) {
     return percentOfE1rm(opts.knownE1rm, opts.loadValue ?? 75, opts.repRange)
   }
+  // An AI-suggested starting load seeds a movement with no logged history.
+  // Once performance exists, the deterministic progression rules take over.
+  if (opts.loadRule === 'last-session' && opts.lastSets.length === 0 && opts.loadValue !== undefined) {
+    return { targetReps: opts.repRange[0], targetWeight: opts.loadValue }
+  }
   if (opts.scheme === 'linear') return linearProgression(opts)
   return doubleProgression(opts)
 }

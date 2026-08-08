@@ -6,9 +6,8 @@ import { getCachedFile } from '@/lib/cache'
 import { updateFile, loadFile } from '@/lib/sync'
 import { listDir } from '@/lib/github'
 import { effectiveTodayISO, monthKey } from '@/lib/dates'
-import { fatigueByMuscle, instantiateDay } from '@/lib/engine'
-import { weeklyAdherence } from '@/lib/insights/adherence'
-import { modalityMixMinutes } from '@/lib/insights/modality'
+import { instantiateDay } from '@/lib/engine'
+import { runToolAgent } from '@/lib/agent/toolAgent'
 import type {
   Exercise,
   Modality,
@@ -16,11 +15,10 @@ import type {
   ProgramDay,
   ProgramsIndexFile,
   ProgressionScheme,
-  Readiness,
-  ReadinessFile,
   Session,
   Venue,
   WeeklyTrainingTarget,
+  ProgramAdjustment,
 } from '@/lib/types'
 import { defineCommand } from './registry'
 import { getProfile } from './profile'
@@ -63,14 +61,6 @@ async function allSessionsAcrossMonths(qc: QueryClient): Promise<Session[]> {
   }
   for (const session of readSessionsMonth(qc, monthKey(effectiveTodayISO()))) byId.set(session.id, session)
   return [...byId.values()].sort((a, b) => `${a.date}${a.createdAt}`.localeCompare(`${b.date}${b.createdAt}`))
-}
-
-function exerciseCandidates(exercises: Exercise[], venues: Venue[], selected?: Venue, limit = 120): Exercise[] {
-  const equipment = new Set((selected ? selected.equipment : venues.flatMap((v) => v.equipment)))
-  equipment.add('body only')
-  const usable = exercises.filter((e) => !e.equipment || equipment.has(e.equipment))
-  const rank = (e: Exercise) => (e.mechanic === 'compound' ? 0 : 2) + (e.level === 'beginner' ? 0 : e.level === 'intermediate' ? 1 : 3)
-  return usable.sort((a, b) => rank(a) - rank(b)).slice(0, limit)
 }
 
 const STRATEGY_SCHEMA = {
@@ -185,43 +175,18 @@ Weekly targets are flexible targets, not fixed weekdays. Their session counts sh
   summarize: (_args, result) => `Generated adaptive plan "${result.name}"`,
 })
 
-function dailySchema(venues: Venue[], forcedVenueId?: string) {
-  return {
-    type: 'object',
-    properties: {
-      name: { type: 'string' },
-      modality: { type: 'string', enum: MODALITIES },
-      ...(!forcedVenueId && venues.length > 0 ? { venueId: { type: 'string', enum: venues.map((venue) => venue.id) } } : {}),
-      focus: { type: 'array', items: { type: 'string' } },
-      rationale: { type: 'string' },
-      exercises: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: { exerciseId: { type: 'string' }, sets: { type: 'number' }, repRangeLo: { type: 'number' }, repRangeHi: { type: 'number' }, targetRir: { type: 'number' }, restSeconds: { type: 'number' } },
-          required: ['exerciseId', 'sets', 'repRangeLo', 'repRangeHi'],
-        },
-      },
-      cardio: {
-        type: 'object',
-        properties: { durationMin: { type: 'number' }, distanceKm: { type: 'number' }, effort: { type: 'number' }, style: { type: 'string', enum: ['steady', 'intervals', 'easy'] } },
-      },
-    },
-    // Cardio prescriptions return an empty list. Requiring the field prevents
-    // a strength response from silently passing structured-output validation
-    // without any exercises.
-    required: ['name', 'modality', 'focus', 'rationale', 'exercises'],
-  }
-}
-
 interface RawDay {
-  name?: string
-  modality?: string
+  name: string
+  modality: string
   venueId?: string
-  focus?: string[]
-  rationale?: string
-  exercises?: { exerciseId?: string; sets?: number; repRangeLo?: number; repRangeHi?: number; targetRir?: number; restSeconds?: number }[]
+  focus: string[]
+  rationale: string
+  exercises: { exerciseId: string; sets: number; repRangeLo: number; repRangeHi: number; targetRir?: number; restSeconds?: number; suggestedWeight?: number; loadGuidance?: string }[]
   cardio?: { durationMin?: number; distanceKm?: number; effort?: number; style?: string }
+  considerations?: string
+  availableMinutes?: number
+  consideredSessionIds?: string[]
+  contextSummary?: string[]
 }
 
 function validatePrescription(raw: RawDay, exercises: Exercise[], venues: Venue[], forcedVenueId?: string): ProgramDay {
@@ -245,12 +210,10 @@ function validatePrescription(raw: RawDay, exercises: Exercise[], venues: Venue[
     return day
   }
 
-  if (!raw.exercises) throw new AiError(`The AI returned ${modality} without an exercises list`)
-
   for (const item of raw.exercises) {
     const exercise = item.exerciseId ? byId.get(item.exerciseId) : undefined
     if (!exercise || !Number.isFinite(item.sets) || item.sets! <= 0) continue
-    const equipmentOk = !venue || venue.equipment.length === 0 || !exercise.equipment || exercise.equipment === 'body only' || venue.equipment.includes(exercise.equipment)
+    const equipmentOk = !venue || !exercise.equipment || exercise.equipment === 'body only' || venue.equipment.includes(exercise.equipment)
     if (!equipmentOk) continue
     const lo = Number.isFinite(item.repRangeLo) ? Math.max(1, Math.round(item.repRangeLo!)) : 8
     const hi = Number.isFinite(item.repRangeHi) ? Math.max(lo, Math.round(item.repRangeHi!)) : Math.max(12, lo)
@@ -261,99 +224,61 @@ function validatePrescription(raw: RawDay, exercises: Exercise[], venues: Venue[
       targetRir: Number.isFinite(item.targetRir) ? Math.min(5, Math.max(0, Math.round(item.targetRir!))) : 2,
       restSeconds: Number.isFinite(item.restSeconds) ? Math.min(300, Math.max(15, Math.round(item.restSeconds!))) : exercise.mechanic === 'compound' ? 120 : 75,
       loadRule: exercise.equipment === 'body only' || !exercise.equipment ? 'bodyweight' : 'last-session',
+      loadValue: Number.isFinite(item.suggestedWeight) && item.suggestedWeight! > 0 ? Math.round(item.suggestedWeight! * 2) / 2 : undefined,
+      notes: item.loadGuidance?.trim() || undefined,
     })
   }
   if (day.exercises.length === 0) throw new AiError('The AI returned no usable exercises for the selected venue')
   return day
 }
 
-function recentSessionLine(session: Session): string {
-  const strength = session.exercises.map((exercise) => {
-    const done = exercise.sets.filter((set) => set.done)
-    const misses = done.filter((set) => set.targetReps && (set.reps ?? 0) < set.targetReps).length
-    return `${exercise.name}: ${done.length}/${exercise.sets.length} sets completed${misses ? `, ${misses} below target` : ''}`
-  }).join('; ')
-  const cardio = session.cardio ? `${Math.round(session.cardio.durationSec / 60)} min, effort ${session.cardio.effort ?? 'unknown'}` : ''
-  return `${session.date} ${session.name} (${session.modality}): ${strength || cardio || 'no completed work'}`
-}
-
-async function latestReadiness(today: string): Promise<Readiness | undefined> {
-  const file = await loadFile<ReadinessFile>(PATHS.readiness, { entries: [] })
-  return [...file.entries].filter((entry) => entry.date <= today).sort((a, b) => b.date.localeCompare(a.date))[0]
-}
-
-interface GenerateTodayArgs { considerations?: string; venueId?: string; availableMinutes?: number }
-
-export const generateTodayCommand = defineCommand<GenerateTodayArgs, Session>({
-  name: 'program.generate_today',
-  title: "Generate today's session",
-  description: "Generate or revise today's unstarted prescription from the active strategy, completed sessions including extra activity today, recent performance, fatigue, readiness, adherence, venue, available time, and free-text considerations. Explicit requests such as 'just walk' or 'keep it light' take highest priority.",
+export const createTodayPrescriptionCommand = defineCommand<RawDay, Session>({
+  name: 'program.create_prescription',
+  title: "Create today's prescription",
+  description: 'Persist a fully specified workout prescription after inspecting the plan, profile, venues, readiness, history, insights, and exercise catalog. For resistance work, use only exact IDs returned by exercise.search. Include a conservative suggestedWeight for every externally loaded exercise; use 0 for bodyweight. Existing performance history will override the estimate when progression has stronger evidence.',
   kind: 'write',
   parameters: {
     type: 'object',
-    properties: { considerations: { type: 'string' }, venueId: { type: 'string' }, availableMinutes: { type: 'number' } },
+    properties: {
+      name: { type: 'string' },
+      modality: { type: 'string', enum: MODALITIES },
+      venueId: { type: 'string' },
+      focus: { type: 'array', items: { type: 'string' } },
+      rationale: { type: 'string' },
+      considerations: { type: 'string' },
+      availableMinutes: { type: 'number' },
+      consideredSessionIds: { type: 'array', items: { type: 'string' } },
+      contextSummary: { type: 'array', items: { type: 'string' } },
+      exercises: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            exerciseId: { type: 'string' }, sets: { type: 'number' }, repRangeLo: { type: 'number' }, repRangeHi: { type: 'number' },
+            targetRir: { type: 'number' }, restSeconds: { type: 'number' }, suggestedWeight: { type: 'number' }, loadGuidance: { type: 'string' },
+          },
+          required: ['exerciseId', 'sets', 'repRangeLo', 'repRangeHi', 'suggestedWeight'],
+        },
+      },
+      cardio: {
+        type: 'object',
+        properties: { durationMin: { type: 'number' }, distanceKm: { type: 'number' }, effort: { type: 'number' }, style: { type: 'string', enum: ['steady', 'intervals', 'easy'] } },
+      },
+    },
+    required: ['name', 'modality', 'focus', 'rationale', 'exercises'],
   },
   handler: async (args, ctx) => {
     const index = readIndex(ctx.qc)
     if (!index.activeId) throw new Error('No active plan — generate one first')
     const program = readProgram(ctx.qc, index.activeId)
     if (!program) throw new Error('Active plan not found')
-    const profile = getProfile(ctx.qc)
     const venues = getVenues(ctx.qc)
-    const selectedVenue = args.venueId ? venues.find((v) => v.id === args.venueId) : undefined
-    if (args.venueId && !selectedVenue) throw new Error('Selected venue not found')
     const exercises = await allExercises(ctx.qc)
-    const candidates = exerciseCandidates(exercises, venues, selectedVenue)
     const today = effectiveTodayISO()
     const history = await allSessionsAcrossMonths(ctx.qc)
     const existing = history.find((session) => session.date === today && session.programId === program.id && session.prescription && !session.startedAt && !session.endedAt)
     const completed = history.filter((session) => session.endedAt && session.id !== existing?.id)
-    const recent = completed.slice(-10)
-    const readiness = await latestReadiness(today)
-    const fatigue = fatigueByMuscle(completed, today, new Map(exercises.map((exercise) => [exercise.id, exercise])))
-    const adherence = weeklyAdherence(completed, program.daysPerWeek, today)
-    const mix = modalityMixMinutes(completed, today, 7)
-    const todayActivity = completed.filter((session) => session.date === today)
-    const contextSummary = [
-      `${adherence.completedThisWeek}/${adherence.target} weekly sessions completed`,
-      `7-day modality mix: ${mix.map((item) => `${item.modality} ${item.minutes}m`).join(', ') || 'none'}`,
-      `today: ${todayActivity.map((session) => `${session.name} (${session.modality})`).join(', ') || 'no completed activity'}`,
-      `fatigue: ${fatigue.filter((item) => item.status !== 'fresh').map((item) => `${item.muscle} ${item.status}`).join(', ') || 'no recently loaded muscles'}`,
-    ]
-    const venueLines = venues.length > 0 ? venues.map((v) => `${v.id} | ${v.name} | modalities=${v.modalities.join(',')} | equipment=${v.equipment.join(',') || 'none'}`).join('\n') : '(none configured: use bodyweight only and omit venueId)'
-    const prompt = `Prescribe one session for today. This is an adaptive recommendation, not a fixed calendar day.
-
-Priority order:
-1. Honor the user's explicit one-time considerations literally when safe. "Just walk" means prescribe a walk only. "Keep it light" means low effort/volume.
-2. Respect injuries, readiness, selected venue, and available time.
-3. Account for ALL completed activity today, including extra walks/cardio, before prescribing more work.
-4. Adapt to recent success, missed targets, muscle recovery, and weekly progress.
-5. Serve the overall plan without forcing a session when recovery or the user's request calls for something lighter.
-
-Plan: ${program.name}
-Theme: ${program.theme}
-Goal: ${program.goal}; progression: ${program.progression}
-Weekly targets: ${program.weeklyTargets.map((target) => `${target.sessions}x ${target.modality} (${target.intent})`).join('; ')}
-Priorities: ${program.priorities.join('; ')}
-Progression guidance: ${program.progressionGuidance}
-Recovery guidance: ${program.recoveryGuidance}
-User considerations: ${args.considerations?.trim() || '(none)'}
-Available minutes: ${args.availableMinutes ?? profile?.sessionMinutes ?? '(not specified)'}
-Forced venue: ${selectedVenue ? `${selectedVenue.id} (${selectedVenue.name})` : '(none)'}
-Profile: ${profile?.experience ?? 'beginner'}, ${profile?.goal ?? 'general-fitness'}${profile?.injuries ? `; limitations=${profile.injuries}` : ''}${profile?.preferences ? `; preferences=${profile.preferences}` : ''}
-Latest readiness: ${readiness ? JSON.stringify(readiness) : '(none logged)'}
-Adaptive context: ${contextSummary.join(' | ')}
-Recent completed sessions:
-${recent.map(recentSessionLine).join('\n') || '(none)'}
-Venues:
-${venueLines}
-
-${selectedVenue ? 'The venue is already fixed by the app. Do not return venueId.' : 'If choosing a venue, copy one exact venueId from the Venues list. Never explain or modify the ID.'}
-For walk/run/cycle/swim/hike, populate cardio and return exercises as an empty array. For strength/mobility/sport/other, exercises is REQUIRED and must contain 2-6 entries; omit cardio. Use 1-5 sets as appropriate to the available time and recovery. Use only these exact exerciseId values:
-${candidates.map((exercise) => `${exercise.id} | ${exercise.name} | ${exercise.primaryMuscles.join('/')} | ${exercise.equipment ?? 'body only'} | ${exercise.mechanic ?? 'compound'}`).join('\n')}`
-
-    const raw = parseJson<RawDay>(await generateJson({ text: prompt, schema: dailySchema(venues, args.venueId), temperature: 0.25, maxOutputTokens: 2200 }), 'daily prescription')
-    const day = validatePrescription(raw, exercises, venues, args.venueId)
+    const day = validatePrescription(args, exercises, venues, args.venueId)
     const venue = day.venueId ? venues.find((item) => item.id === day.venueId) : undefined
     const instantiated = instantiateDay({ day, history: completed, scheme: program.progression as ProgressionScheme, exercisesById: new Map(exercises.map((exercise) => [exercise.id, exercise])), venue })
     const now = new Date().toISOString()
@@ -367,14 +292,14 @@ ${candidates.map((exercise) => `${exercise.id} | ${exercise.name} | ${exercise.p
       focus: day.focus,
       source: 'program',
       exercises: instantiated.exercises,
-      rationale: raw.rationale?.trim() || 'Adapted from your plan and recent activity.',
+      rationale: args.rationale.trim() || 'Adapted from your plan and recent activity.',
       prescription: {
         generatedAt: now,
         considerations: args.considerations?.trim() || undefined,
-        rationale: raw.rationale?.trim() || 'Adapted from your plan and recent activity.',
+        rationale: args.rationale.trim() || 'Adapted from your plan and recent activity.',
         target: day.target,
-        consideredSessionIds: recent.map((session) => session.id),
-        contextSummary,
+        consideredSessionIds: (args.consideredSessionIds ?? []).filter((id) => completed.some((session) => session.id === id)),
+        contextSummary: (args.contextSummary ?? []).filter(Boolean).slice(0, 8),
         availableMinutes: args.availableMinutes,
       },
       createdAt: existing?.createdAt ?? now,
@@ -384,6 +309,52 @@ ${candidates.map((exercise) => `${exercise.id} | ${exercise.name} | ${exercise.p
     return session
   },
   summarize: (_args, result) => `Prepared "${result.name}" for today`,
+})
+
+interface GenerateTodayArgs { considerations?: string; venueId?: string; availableMinutes?: number }
+
+export const generateTodayCommand = defineCommand<GenerateTodayArgs, Session>({
+  name: 'program.generate_today',
+  title: "Generate today's session",
+  description: 'Run the workout-planning agent. It inspects the active plan, profile, venues, readiness, history and insights; searches the exercise catalog itself; then creates a fully specified prescription with suggested loads.',
+  // This command orchestrates reads. The final program.create_prescription
+  // tool is the audited write.
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: { considerations: { type: 'string' }, venueId: { type: 'string' }, availableMinutes: { type: 'number' } },
+  },
+  handler: async (args, ctx) => {
+    const index = readIndex(ctx.qc)
+    if (!index.activeId) throw new Error('No active plan — generate one first')
+    if (args.venueId && !getVenues(ctx.qc).some((venue) => venue.id === args.venueId)) throw new Error('Selected venue not found')
+    const profile = getProfile(ctx.qc)
+    const unit = profile?.units ?? 'kg'
+    return runToolAgent<Session>({
+      ctx,
+      finalTool: 'program.create_prescription',
+      allowedTools: [
+        'profile.get', 'program.get', 'venue.list', 'exercise.facets', 'exercise.search', 'exercise.get',
+        'session.list', 'body.get_readiness', 'body.get_metrics', 'insights.adherence', 'insights.modality_mix',
+        'insights.volume_vs_landmarks', 'insights.stalled_exercises', 'insights.personal_records', 'insights.cardio_trend',
+      ],
+      system: `You are Reps' workout-planning agent. Decide the session by using tools, not by relying on a preselected exercise list.
+
+Required workflow:
+1. Read the active program and profile, venues, recent sessions, readiness, and relevant insights.
+2. Honor explicit user considerations first when safe. Account for all completed activity today.
+3. For resistance, mobility, or sport sessions, call exercise.facets when useful and exercise.search one or more times. Never invent an exercise id.
+4. Finish only by calling program.create_prescription.
+
+Use 2-6 exercises and 1-5 working sets when resistance work is appropriate. For every externally loaded exercise, provide a conservative suggestedWeight in ${unit}; use recent logged loads when available. Use 0 for bodyweight. For dumbbells or kettlebells the value is per implement; for barbells, machines, and cables it is total displayed load, and explain this briefly in loadGuidance. The progression engine will override estimates when history provides a stronger target.
+
+For cardio, provide cardio and an empty exercises array. Include concise contextSummary evidence and the IDs of sessions actually considered. Respect injuries, venue equipment, recovery, time, and the active plan.`,
+      user: `Prepare today's session (${effectiveTodayISO()}).
+User considerations: ${args.considerations?.trim() || '(none)'}
+Available minutes: ${args.availableMinutes ?? profile?.sessionMinutes ?? '(not specified)'}
+${args.venueId ? `Required venueId: ${args.venueId}. Use this exact venue.` : 'No venue was forced; choose a saved compatible venue or omit venueId.'}`,
+    })
+  },
 })
 
 export const listProgramsCommand = defineCommand<Record<string, never>, ProgramsIndexFile['list']>({
@@ -400,4 +371,74 @@ export const setActiveProgramCommand = defineCommand<{ id: string }, ProgramsInd
 
 export const archiveProgramCommand = defineCommand<{ id: string }, ProgramsIndexFile>({
   name: 'program.archive', title: 'Archive plan', description: 'Archive a plan so it is no longer used for daily prescriptions.', kind: 'write', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, handler: (args, ctx) => writeIndex(ctx.qc, (current) => ({ activeId: current.activeId === args.id ? null : current.activeId, list: current.list.map((p) => p.id === args.id ? { ...p, status: 'archived' as const } : p) })), summarize: () => 'Archived plan',
+})
+
+interface ApplyProgramAdjustmentArgs {
+  programId?: string
+  adjustment: ProgramAdjustment
+}
+
+export const applyProgramAdjustmentCommand = defineCommand<ApplyProgramAdjustmentArgs, { program: Program; previous: Program }>({
+  name: 'program.apply_adjustment',
+  title: 'Apply coaching adjustment to plan',
+  description:
+    'Apply an AI-proposed weekly coaching adjustment to the active adaptive plan. Use only after reviewing evidence and explaining the rationale; changes the strategy, not completed workouts.',
+  kind: 'write',
+  parameters: {
+    type: 'object',
+    properties: {
+      programId: { type: 'string' },
+      adjustment: {
+        type: 'object',
+        properties: {
+          theme: { type: 'string' },
+          priorities: { type: 'array', items: { type: 'string' } },
+          weeklyTargets: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                modality: { type: 'string', enum: MODALITIES },
+                sessions: { type: 'number' },
+                intent: { type: 'string' },
+              },
+              required: ['modality', 'sessions', 'intent'],
+            },
+          },
+          progressionGuidance: { type: 'string' },
+          recoveryGuidance: { type: 'string' },
+          daysPerWeek: { type: 'number' },
+          rationale: { type: 'string' },
+        },
+        required: ['rationale'],
+      },
+    },
+    required: ['adjustment'],
+  },
+  handler: (args, ctx) => {
+    const id = args.programId ?? readIndex(ctx.qc).activeId
+    if (!id) throw new Error('No active plan to adjust')
+    const previous = readProgram(ctx.qc, id)
+    if (!previous) throw new Error(`Plan ${id} not found`)
+    const adjustment = args.adjustment
+    const nextTargets = adjustment.weeklyTargets === undefined
+      ? previous.weeklyTargets
+      : weeklyTargets(adjustment.weeklyTargets, adjustment.daysPerWeek ?? previous.daysPerWeek)
+    const program: Program = {
+      ...previous,
+      theme: adjustment.theme?.trim() || previous.theme,
+      priorities: adjustment.priorities?.filter(Boolean).slice(0, 6) ?? previous.priorities,
+      weeklyTargets: nextTargets,
+      progressionGuidance: adjustment.progressionGuidance?.trim() || previous.progressionGuidance,
+      recoveryGuidance: adjustment.recoveryGuidance?.trim() || previous.recoveryGuidance,
+      daysPerWeek: adjustment.daysPerWeek === undefined
+        ? previous.daysPerWeek
+        : Math.min(7, Math.max(1, Math.round(adjustment.daysPerWeek))),
+      rationale: adjustment.rationale.trim() || previous.rationale,
+    }
+    writeProgram(ctx.qc, program)
+    return { program, previous }
+  },
+  undo: (_args, result, ctx) => writeProgram(ctx.qc, result.previous),
+  summarize: (_args, result) => `Adjusted adaptive plan "${result.program.name}"`,
 })
