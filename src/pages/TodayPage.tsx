@@ -12,16 +12,12 @@ import { completedSetCount, sessionVolumeKg, formatDuration, lastPerformanceSumm
 import { plateMath, STANDARD_BARBELL_KG, STANDARD_PLATE_INVENTORY_KG } from '@/lib/engine'
 import { ExerciseDetailsTrigger } from '@/components/ExerciseImage'
 import ExercisePicker from '@/components/ExercisePicker'
-import RestTimer from '@/components/RestTimer'
+import NextSessionCard from '@/components/session/NextSessionCard'
 import { useAllExercises } from '@/hooks/useExercises'
+import { selectNextSession } from '@/lib/selectors/session'
 import type { Exercise, Modality, Profile, ProgramsIndexFile, ReadinessFile, Session, SessionExercise, SetEntry, VenuesFile, WeeklyReviewsFile } from '@/lib/types'
 
-const CARDIO_MODALITIES: Modality[] = ['walk', 'run', 'cycle', 'swim', 'hike']
 const MODALITY_ORDER: Modality[] = ['strength', 'walk', 'run', 'cycle', 'swim', 'hike', 'mobility', 'sport', 'other']
-
-function isCardioModality(m: Modality): boolean {
-  return CARDIO_MODALITIES.includes(m)
-}
 
 // ---- Starting a session ----
 
@@ -166,12 +162,12 @@ function GenerateTodayCard({ programName, compact = false }: { programName: stri
         {!compact && (
           <div className="rounded-xl bg-white/8 p-3 ring-1 ring-white/10">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">Quick readiness</p>
-            <div className="grid grid-cols-[1fr_1fr_5.5rem] gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
               <select
                 aria-label="Energy"
                 value={energy ?? ''}
                 onChange={(event) => setEnergy(Number(event.target.value) || null)}
-                className="h-9 rounded-md border border-white/15 bg-white/10 px-2 text-sm text-white"
+                className="h-9 min-w-0 rounded-md border border-white/15 bg-white/10 px-2 text-sm text-white"
               >
                 <option className="text-foreground" value="">Energy</option>
                 {[1, 2, 3, 4, 5].map((value) => <option className="text-foreground" key={value} value={value}>Energy {value}/5</option>)}
@@ -180,7 +176,7 @@ function GenerateTodayCard({ programName, compact = false }: { programName: stri
                 aria-label="Soreness"
                 value={soreness ?? ''}
                 onChange={(event) => setSoreness(Number(event.target.value) || null)}
-                className="h-9 rounded-md border border-white/15 bg-white/10 px-2 text-sm text-white"
+                className="h-9 min-w-0 rounded-md border border-white/15 bg-white/10 px-2 text-sm text-white"
               >
                 <option className="text-foreground" value="">Soreness</option>
                 {[1, 2, 3, 4, 5].map((value) => <option className="text-foreground" key={value} value={value}>Soreness {value}/5</option>)}
@@ -192,7 +188,7 @@ function GenerateTodayCard({ programName, compact = false }: { programName: stri
                 value={sleepHours}
                 onChange={(event) => setSleepHours(event.target.value)}
                 placeholder="Sleep h"
-                className="border-white/20 bg-white/10 text-white placeholder:text-white/50"
+                className="min-w-0 border-white/20 bg-white/10 text-white placeholder:text-white/50"
               />
             </div>
           </div>
@@ -230,7 +226,7 @@ function GenerateTodayCard({ programName, compact = false }: { programName: stri
   )
 }
 
-function PrescriptionCard({ session, programName }: { session: Session; programName: string }) {
+export function PrescriptionCard({ session, programName }: { session: Session; programName: string }) {
   const runCommand = useRunCommand()
   const [busy, setBusy] = useState(false)
   const [swappingId, setSwappingId] = useState<string | null>(null)
@@ -524,7 +520,7 @@ function VenueSwitcher({ session }: { session: Session }) {
 
 // ---- Exercise-based active session (strength / mobility / sport / other) ----
 
-function ExerciseSessionCard({ session, sessions, onRest }: { session: Session; sessions: Session[]; onRest: (seconds: number) => void }) {
+export function ExerciseSessionCard({ session, sessions, onRest }: { session: Session; sessions: Session[]; onRest: (seconds: number) => void }) {
   const runCommand = useRunCommand()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [swappingId, setSwappingId] = useState<string | null>(null)
@@ -740,7 +736,7 @@ function ExerciseSessionCard({ session, sessions, onRest }: { session: Session; 
 
 // ---- Cardio active session ----
 
-function CardioSessionCard({ session }: { session: Session }) {
+export function CardioSessionCard({ session }: { session: Session }) {
   const runCommand = useRunCommand()
   const target = session.prescription?.target
   const [minutes, setMinutes] = useState(target?.durationMin ? String(target.durationMin) : '')
@@ -1008,39 +1004,24 @@ function QuickLogWidget() {
 export default function TodayPage() {
   const { data: sessions } = useFileQuery<Session[]>(PATHS.sessions(currentMonthKey()), [])
   const { data: programIndex } = useFileQuery<ProgramsIndexFile>(PATHS.programsIndex, { activeId: null, list: [] })
-  const [timer, setTimer] = useState<{ startedAt: number; seconds: number } | null>(null)
+  const { data: venuesFile } = useFileQuery<VenuesFile>(PATHS.venues, { venues: [] })
+  const { data: exercises } = useAllExercises()
   const today = effectiveTodayISO()
   const todaySessions = (sessions ?? []).filter((s) => s.date === today)
-  const active = todaySessions.find((s) => !s.endedAt) ?? null
   const completed = todaySessions.filter((s) => s.endedAt)
+  const next = selectNextSession(sessions ?? [], today)
 
   const activeProgramId = programIndex?.activeId ?? null
   const activeProgramMeta = programIndex?.list.find((p) => p.id === activeProgramId)
-  const prescription = active && !active.startedAt && active.prescription ? active : null
-
-  if (active?.startedAt) {
-    return (
-      <div className="space-y-3 pb-16">
-        {isCardioModality(active.modality) ? (
-          <CardioSessionCard session={active} />
-        ) : (
-          <ExerciseSessionCard session={active} sessions={sessions ?? []} onRest={(seconds) => setTimer({ startedAt: Date.now(), seconds })} />
-        )}
-        <RestTimer
-          timer={timer}
-          onDone={() => setTimer(null)}
-          onAdjust={(deltaSeconds) => setTimer((current) => current ? { ...current, seconds: Math.max(5, current.seconds + deltaSeconds) } : null)}
-        />
-      </div>
-    )
-  }
+  const nextProgramMeta = programIndex?.list.find((program) => program.id === next?.programId) ?? activeProgramMeta
+  const nextVenue = venuesFile?.venues.find((venue) => venue.id === next?.venueId)
 
   return (
     <div className="space-y-4 pb-16">
       <HomeHeader />
 
-      {prescription && activeProgramMeta ? (
-        <PrescriptionCard session={prescription} programName={activeProgramMeta.name} />
+      {next ? (
+        <NextSessionCard session={next} programName={nextProgramMeta?.name} venue={nextVenue} exercises={exercises} />
       ) : (
         <>
           {activeProgramMeta && <GenerateTodayCard programName={activeProgramMeta.name} />}

@@ -33,7 +33,7 @@ export function ExerciseThumb({ exercise, className }: { exercise?: Exercise; cl
   )
 }
 
-function ExerciseMedia({ exercise }: { exercise: Exercise }) {
+export function ExerciseMedia({ exercise }: { exercise: Exercise }) {
   const [frame, setFrame] = useState(0)
   const frames = exercise.images.map(exerciseImageUrl)
 

@@ -8,6 +8,8 @@ import { currentMonthKey, effectiveTodayISO, monthKey } from '@/lib/dates'
 import { isTimedCategory } from '@/lib/exerciseDb'
 import { doubleProgression, performedSets } from '@/lib/engine'
 import { runToolAgent } from '@/lib/agent/toolAgent'
+import { muscleMapSnapshot, type MuscleMapDatum } from '@/lib/insights/muscleMap'
+import { selectNextSession } from '@/lib/selectors/session'
 import type { CardioResult, Modality, SetEntry, SetType, Session, SessionExercise } from '@/lib/types'
 import { defineCommand } from './registry'
 import { allExercises } from './exercises'
@@ -338,6 +340,25 @@ export const getSessionCommand = defineCommand<{ sessionId: string }, Session>({
   },
 })
 
+export const getSessionMuscleTargetsCommand = defineCommand<{ sessionId: string }, MuscleMapDatum[]>({
+  name: 'session.muscle_targets',
+  title: 'Get session muscle targets',
+  description:
+    'Read the exact primary/secondary muscle target values shown on one session preview. Returns weighted prescribed sets, contributing exercises, and confidence for every body region.',
+  kind: 'read',
+  parameters: { type: 'object', properties: { sessionId: { type: 'string' } }, required: ['sessionId'] },
+  handler: async (args, ctx) => {
+    const [located, exercises] = [await locateSession(ctx.qc, args.sessionId), await allExercises(ctx.qc)]
+    if (!located) throw new Error(`Session ${args.sessionId} not found`)
+    return muscleMapSnapshot(
+      [located.session],
+      located.session.date,
+      new Map(exercises.map((exercise) => [exercise.id, exercise])),
+      'target',
+    )
+  },
+})
+
 interface AgentSubstituteArgs {
   sessionId: string
   exerciseId: string
@@ -629,6 +650,16 @@ interface ListArgs {
   month?: string
   limit?: number
 }
+
+export const getNextSessionCommand = defineCommand<Record<string, never>, Session | null>({
+  name: 'session.next',
+  title: 'Get next session',
+  description:
+    'Get the single session Home should show: an in-progress session first, then the earliest upcoming unstarted session, then the most recent unfinished fallback. Returns null when the AI needs to prepare a session.',
+  kind: 'read',
+  parameters: { type: 'object', properties: {} },
+  handler: async () => selectNextSession(await loadFile<Session[]>(PATHS.sessions(currentMonthKey()), emptySessions)),
+})
 
 export const listSessionsCommand = defineCommand<ListArgs, Session[]>({
   name: 'session.list',

@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { TimerReset, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Props {
   /** Timestamp (ms) the rest started + duration; null hides the timer. */
   timer: { startedAt: number; seconds: number } | null
   onDone: () => void
   onAdjust?: (deltaSeconds: number) => void
+  immersive?: boolean
 }
 
 /** Floating rest countdown, pinned above the bottom nav during a session. */
-export default function RestTimer({ timer, onDone, onAdjust }: Props) {
+export default function RestTimer({ timer, onDone, onAdjust, immersive = false }: Props) {
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function RestTimer({ timer, onDone, onAdjust }: Props) {
   const progress = 1 - remaining / timer.seconds
 
   return (
-    <div className="fixed inset-x-4 bottom-24 z-30 mx-auto max-w-md md:bottom-8">
+    <div className={cn('fixed inset-x-4 z-40 mx-auto max-w-md', immersive ? 'bottom-[calc(env(safe-area-inset-bottom)+1rem)]' : 'bottom-24 md:bottom-8')}>
       <div className="overflow-hidden rounded-full bg-[var(--ink-900)] text-white shadow-xl">
         <div className="relative flex items-center gap-3 px-4 py-2.5">
           <div className="absolute inset-0 bg-white/15" style={{ width: `${progress * 100}%` }} />

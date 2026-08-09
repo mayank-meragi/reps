@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { BarChart3, CalendarClock, ClipboardList, Dumbbell, Home as HomeIcon, Settings, Sparkles } from 'lucide-react'
 import TodayPage from '@/pages/TodayPage'
@@ -18,6 +18,9 @@ import { useProfile } from '@/hooks/useProfile'
 import SyncStatus from '@/components/SyncStatus'
 import { cn } from '@/lib/utils'
 
+const SessionPage = lazy(() => import('@/pages/SessionPage'))
+const WorkoutPage = lazy(() => import('@/pages/WorkoutPage'))
+
 const NAV = [
   { to: '/', label: 'Today', icon: HomeIcon, end: true },
   { to: '/plan', label: 'Plan', icon: ClipboardList },
@@ -30,8 +33,10 @@ function openAssistant() {
 }
 
 function Shell() {
+  const location = useLocation()
   const { profile, isReady } = useProfile()
   const [skipSetup, setSkipSetup] = useState(false)
+  const immersive = /^\/session\/[^/]+\/train$/.test(location.pathname)
 
   if (isReady && !profile && !skipSetup) {
     return (
@@ -43,7 +48,7 @@ function Shell() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 bg-background/85 backdrop-blur">
+      {!immersive && <header className="sticky top-0 z-20 bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
           <NavLink to="/" className="flex items-center gap-1.5 font-display text-base font-bold tracking-tight text-[var(--ink-900)]">
             <Dumbbell className="size-4 text-[var(--brand)]" />
@@ -86,19 +91,23 @@ function Shell() {
             <Settings className="size-4" />
           </NavLink>
         </div>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 py-3 pb-28 md:py-6 md:pb-10">
-        <Routes>
-          <Route path="/" element={<TodayPage />} />
-          <Route path="/plan" element={<PlanPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/insights" element={<InsightsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
+      </header>}
+      <main className={cn(!immersive && 'mx-auto max-w-5xl px-4 py-3 pb-28 md:py-6 md:pb-10')}>
+        <Suspense fallback={<div className={cn('animate-pulse bg-[var(--surface-sunken)] motion-reduce:animate-none', immersive ? 'min-h-dvh' : 'h-80 rounded-2xl')} />}>
+          <Routes>
+            <Route path="/" element={<TodayPage />} />
+            <Route path="/plan" element={<PlanPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/insights" element={<InsightsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/session/:sessionId" element={<SessionPage />} />
+            <Route path="/session/:sessionId/train" element={<WorkoutPage />} />
+          </Routes>
+        </Suspense>
       </main>
       <ActionToast />
       <Assistant />
-      <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-20 px-8 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
+      {!immersive && <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-20 px-8 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
         <div className="pointer-events-auto mx-auto grid max-w-xs grid-cols-5 items-center rounded-full bg-card p-1.5 shadow-lg ring-1 ring-foreground/[0.06]">
           {NAV.slice(0, 2).map((item) => (
             <NavLink
@@ -141,7 +150,7 @@ function Shell() {
             </NavLink>
           ))}
         </div>
-      </nav>
+      </nav>}
     </div>
   )
 }
