@@ -6,6 +6,7 @@ import App from './App.tsx'
 // Side-effect import: registers every command so the registry is populated
 // before anything calls run() or asks for the AI's tool list.
 import '@/lib/commands'
+import { hydrateCache } from '@/lib/cache'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,6 +16,9 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// Load the local database into memory first so every read below is instant and complete
+await hydrateCache()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

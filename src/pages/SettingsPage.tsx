@@ -8,6 +8,7 @@ import { getConfig, setConfig, clearFileCache } from '@/lib/cache'
 import { keyConfigFor, modelConfigFor, PROVIDER_LABEL, PROVIDERS, DEFAULT_MODEL, type Provider } from '@/lib/llm'
 import { commandCoverage } from '@/lib/commands'
 import VenuesManager from '@/components/VenuesManager'
+import GoogleHealthCard from '@/components/GoogleHealthCard'
 import { PATHS } from '@/lib/paths'
 import { useFileQuery } from '@/hooks/useData'
 import { useRunCommand } from '@/lib/commands/useRunCommand'
@@ -157,6 +158,8 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <GoogleHealthCard />
 
       <VenuesManager />
 

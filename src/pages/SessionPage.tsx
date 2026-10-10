@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ExerciseDetailsTrigger } from '@/components/ExerciseImage'
 import SessionMuscleMap from '@/components/session/SessionMuscleMap'
+import CoachingLedger from '@/components/session/CoachingLedger'
 import { PATHS } from '@/lib/paths'
 import { currentMonthKey } from '@/lib/dates'
 import { useFileQuery } from '@/hooks/useData'
@@ -86,6 +87,7 @@ export default function SessionPage() {
           <CardContent className="py-4">
             <p className="reps-eyebrow">Why this session</p>
             <p className="mt-2 text-sm leading-relaxed text-foreground">{session.prescription?.rationale ?? session.rationale}</p>
+            {session.prescription && <div className="mt-3"><CoachingLedger prescription={session.prescription} /></div>}
             {(session.prescription?.contextSummary.length ?? 0) > 0 && (
               <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
                 {session.prescription?.contextSummary.map((item) => <li key={item}>• {item}</li>)}

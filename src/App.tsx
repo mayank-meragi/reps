@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { BarChart3, CalendarClock, ClipboardList, Dumbbell, Home as HomeIcon, Settings, Sparkles } from 'lucide-react'
+import { BarChart3, CalendarClock, ClipboardList, Dumbbell, HeartPulse, Home as HomeIcon, Settings, Sparkles } from 'lucide-react'
 import TodayPage from '@/pages/TodayPage'
+import HealthPage from '@/pages/HealthPage'
 import HistoryPage from '@/pages/HistoryPage'
 import PlanPage from '@/pages/PlanPage'
 import InsightsPage from '@/pages/InsightsPage'
@@ -23,6 +24,7 @@ const WorkoutPage = lazy(() => import('@/pages/WorkoutPage'))
 
 const NAV = [
   { to: '/', label: 'Today', icon: HomeIcon, end: true },
+  { to: '/health', label: 'Health', icon: HeartPulse },
   { to: '/plan', label: 'Plan', icon: ClipboardList },
   { to: '/history', label: 'History', icon: CalendarClock },
   { to: '/insights', label: 'Insights', icon: BarChart3 },
@@ -96,6 +98,7 @@ function Shell() {
         <Suspense fallback={<div className={cn('animate-pulse bg-[var(--surface-sunken)] motion-reduce:animate-none', immersive ? 'min-h-dvh' : 'h-80 rounded-2xl')} />}>
           <Routes>
             <Route path="/" element={<TodayPage />} />
+            <Route path="/health" element={<HealthPage />} />
             <Route path="/plan" element={<PlanPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/insights" element={<InsightsPage />} />
@@ -108,7 +111,7 @@ function Shell() {
       <ActionToast />
       <Assistant />
       {!immersive && <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-20 px-8 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
-        <div className="pointer-events-auto mx-auto grid max-w-xs grid-cols-5 items-center rounded-full bg-card p-1.5 shadow-lg ring-1 ring-foreground/[0.06]">
+        <div className="pointer-events-auto mx-auto grid max-w-sm grid-cols-6 items-center rounded-full bg-card p-1.5 shadow-lg ring-1 ring-foreground/[0.06]">
           {NAV.slice(0, 2).map((item) => (
             <NavLink
               key={item.to}

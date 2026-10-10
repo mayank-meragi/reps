@@ -13,6 +13,7 @@ import { plateMath, STANDARD_BARBELL_KG, STANDARD_PLATE_INVENTORY_KG } from '@/l
 import { ExerciseDetailsTrigger } from '@/components/ExerciseImage'
 import ExercisePicker from '@/components/ExercisePicker'
 import NextSessionCard from '@/components/session/NextSessionCard'
+import CoachingLedger from '@/components/session/CoachingLedger'
 import { useAllExercises } from '@/hooks/useExercises'
 import { selectNextSession } from '@/lib/selectors/session'
 import type { Exercise, Modality, Profile, ProgramsIndexFile, ReadinessFile, Session, SessionExercise, SetEntry, VenuesFile, WeeklyReviewsFile } from '@/lib/types'
@@ -300,6 +301,7 @@ export function PrescriptionCard({ session, programName }: { session: Session; p
             </p>
           )}
           <p className="text-sm text-white/80">{session.prescription?.rationale ?? session.rationale}</p>
+          {session.prescription && <CoachingLedger prescription={session.prescription} dark />}
           {(session.prescription?.contextSummary.length ?? 0) > 0 && (
             <details className="rounded-lg bg-white/8 px-3 py-2 text-xs text-white/65">
               <summary className="cursor-pointer font-semibold text-white/80">Why this workout?</summary>

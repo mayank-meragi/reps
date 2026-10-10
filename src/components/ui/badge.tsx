@@ -19,6 +19,11 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // How a reading sits against the user's own baseline
+        normal: "bg-tone-normal/15 text-tone-normal",
+        favorable: "bg-tone-favorable/15 text-tone-favorable",
+        attention: "bg-tone-attention/15 text-tone-attention",
+        neutral: "bg-tone-neutral/15 text-tone-neutral",
       },
     },
     defaultVariants: {

@@ -60,3 +60,13 @@ export function daysBetween(a: string, b: string): number {
   const msPerDay = 24 * 60 * 60 * 1000
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / msPerDay)
 }
+
+/** Civil-date arithmetic on a YYYY-MM-DD string, timezone-proof: addDays("2026-10-09", -1) → "2026-10-08" */
+export function addDays(date: string, days: number): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** "2026-10-09" → "9 Oct 2026" */
+export function formatDateLabel(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}

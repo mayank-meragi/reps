@@ -13,6 +13,7 @@ import './quicklog'
 import './body'
 import './insights'
 import './reviews'
+import './health'
 
 export * from './registry'
 export * from './context'

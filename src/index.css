@@ -72,6 +72,15 @@
   --color-viz-7: var(--viz-7);
   --color-positive: var(--positive-600);
   --color-negative: var(--negative-600);
+  /* Health: how a reading sits against the user's own baseline, and recovery zones */
+  --color-tone-normal: var(--tone-normal);
+  --color-tone-favorable: var(--tone-favorable);
+  --color-tone-attention: var(--tone-attention);
+  --color-tone-neutral: var(--tone-neutral);
+  --color-zone-green: var(--zone-green);
+  --color-zone-yellow: var(--zone-yellow);
+  --color-zone-red: var(--zone-red);
+  --color-score-strain: var(--score-strain-to);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -153,6 +162,25 @@
   --viz-5: #eba613;
   --viz-6: #ef7a50;
   --viz-7: #e15fa6;
+
+  /* ---- Health tones & scores (same in every theme) ---- */
+  --tone-normal: #4cc38a;
+  --tone-favorable: #6aa6f5;
+  --tone-attention: #f29155;
+  --tone-neutral: #8d93a3;
+  --zone-green: #8ddb5f;
+  --zone-yellow: #f5c542;
+  --zone-red: #f2685b;
+  --score-strain-from: #ffd166;
+  --score-strain-to: #f59e0b;
+  --score-sleep-from: #93c5fd;
+  --score-sleep-to: #6366f1;
+  --score-recovery-green-from: #bef264;
+  --score-recovery-green-to: #22c55e;
+  --score-recovery-yellow-from: #fde68a;
+  --score-recovery-yellow-to: #eab308;
+  --score-recovery-red-from: #fda4af;
+  --score-recovery-red-to: #ef4444;
 
   --text-strong: var(--ink-900);
   --text-body: var(--ink-800);
@@ -286,6 +314,33 @@
   --sidebar-accent-foreground: var(--ink-50);
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: var(--focus-ring);
+}
+
+/* Dark Bevel-style surface for the health screens. Re-points the shadcn tokens, so every
+   shadcn component inside follows it; components never carry their own colors. */
+.health-theme {
+  color-scheme: dark;
+  --background: #1c1d22;
+  --foreground: #f3f4f8;
+  --card: #2a2c33;
+  --card-foreground: #f3f4f8;
+  --popover: #2a2c33;
+  --popover-foreground: #f3f4f8;
+  --primary: #7c8cf8;
+  --primary-foreground: #14151a;
+  --secondary: #2a2c33;
+  --secondary-foreground: #f3f4f8;
+  --muted: #343643;
+  --muted-foreground: #8d93a3;
+  --accent: #343643;
+  --accent-foreground: #f3f4f8;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.14);
+}
+
+/* Health cards are rounder than the app default */
+.health-theme [data-slot='card'] {
+  border-radius: var(--radius-3xl);
 }
 
 @layer base {

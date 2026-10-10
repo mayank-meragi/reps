@@ -197,6 +197,54 @@ export interface CardioResult {
   avgPaceSecPerKm?: number
 }
 
+export type CoachingReasonCode =
+  | 'SAFETY_CONSTRAINT'
+  | 'USER_REQUEST'
+  | 'PROGRAM_CONTINUITY'
+  | 'WEEKLY_TARGET_GAP'
+  | 'RECENT_MUSCLE_STIMULUS'
+  | 'RECOVERY_REDUCED'
+  | 'NORMAL_READINESS'
+  | 'VOLUME_BELOW_TARGET'
+  | 'VOLUME_ABOVE_TARGET'
+  | 'EXERCISE_CONTINUITY'
+  | 'LOAD_PROGRESSION_AVAILABLE'
+  | 'TIME_CONSTRAINT'
+  | 'VENUE_CONSTRAINT'
+  | 'PREFERENCE'
+  | 'MODALITY_CHANGED'
+
+export interface CoachingEvidence {
+  code: CoachingReasonCode
+  subject?: string
+  detail: string
+}
+
+export interface MuscleStimulusTarget {
+  muscle: string
+  stimulus: 'low' | 'moderate' | 'high'
+}
+
+export interface TodayStimulusAssessment {
+  primaryAdaptation: string
+  modality: Modality
+  preserveExistingIntent: boolean
+  muscleTargets: MuscleStimulusTarget[]
+  systemicFatigue: 'low' | 'moderate' | 'high'
+  availableMinutes?: number
+  constraints: string[]
+  rationale: string
+  evidence: CoachingEvidence[]
+}
+
+export interface ExerciseSelectionDecision {
+  exerciseId: string
+  purpose: string
+  continuity: 'continued' | 'returning' | 'new' | 'substitution'
+  replacesExerciseId?: string
+  selectionRationale: string
+}
+
 export interface SessionPrescription {
   generatedAt: string
   /** One-time input used for this recommendation, not permanent coach memory. */
@@ -206,6 +254,12 @@ export interface SessionPrescription {
   consideredSessionIds: string[]
   contextSummary: string[]
   availableMinutes?: number
+  /** Structured coaching trace. Optional for prescriptions created before this field existed. */
+  stimulusAssessment?: TodayStimulusAssessment
+  reasonCodes?: CoachingEvidence[]
+  exerciseDecisions?: ExerciseSelectionDecision[]
+  modalityChanged?: boolean
+  modalityChangeReason?: string
 }
 
 export interface Session {
@@ -253,6 +307,8 @@ export interface Profile {
   /** Available barbell + plate inventory, in the profile's units */
   barbellWeight?: number
   plateInventory?: number[]
+  /** Nightly sleep target in minutes; the sleep score's duration part measures against it (default 480) */
+  sleepNeedMinutes?: number
   createdAt: string
   updatedAt: string
 }

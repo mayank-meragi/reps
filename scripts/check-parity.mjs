@@ -16,6 +16,9 @@ import { join, relative } from 'node:path'
 const SRC = new URL('../src', import.meta.url).pathname
 const COMMANDS_DIR = join(SRC, 'lib/commands')
 const ALLOWED_PREFIXES = ['lib/commands/', 'lib/data/', 'lib/sync.ts']
+// The local database is a persistence primitive like updateFile: only commands and the
+// data layer may import it (type-only imports are fine). The UI reads it through commands.
+const DB_ALLOWED_PREFIXES = ['lib/commands/', 'lib/db/', 'lib/cache.ts']
 const COMMAND_SUPPORT_FILES = new Set(['context.ts', 'index.ts', 'log.ts', 'registry.ts', 'toast.ts', 'useRunCommand.ts'])
 
 /** @type {string[]} */
@@ -35,9 +38,13 @@ function walk(dir) {
 
 function check(file) {
   const rel = relative(SRC, file).replace(/\\/g, '/')
+  const text = readFileSync(file, 'utf8')
+  if (!DB_ALLOWED_PREFIXES.some((p) => rel.startsWith(p) || rel === p)) {
+    const dbImportRe = /import\s+(?!type\b)[^'"]*?from\s+['"][^'"]*\/db\/[^'"]*['"]/g
+    if (dbImportRe.test(text)) violations.push(`${rel}: imports the local database directly — read and write through lib/commands`)
+  }
   if (ALLOWED_PREFIXES.some((p) => rel.startsWith(p) || rel === p)) return
 
-  const text = readFileSync(file, 'utf8')
   // Matches `import { ..., updateFile, ... } from '...sync'` (any import order/spacing)
   const importBlockRe = /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"][^'"]*\/lib\/sync['"]/g
   let match

@@ -21,6 +21,7 @@ interface ProfilePatch {
   units?: Units
   barbellWeight?: number
   plateInventory?: number[]
+  sleepNeedMinutes?: number
 }
 
 const GOALS: TrainingGoal[] = ['build-muscle', 'strength', 'fat-loss', 'general-fitness', 'endurance']
@@ -55,6 +56,7 @@ export const updateProfileCommand = defineCommand<ProfilePatch, Profile>({
       units: { type: 'string', enum: ['kg', 'lb'] },
       barbellWeight: { type: 'number' },
       plateInventory: { type: 'array', items: { type: 'number' } },
+      sleepNeedMinutes: { type: 'number', description: 'Nightly sleep target in minutes (default 480); used by the sleep score' },
     },
   },
   handler: (patch, ctx) => {

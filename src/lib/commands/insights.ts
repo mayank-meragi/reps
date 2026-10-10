@@ -10,6 +10,7 @@ import { cardioPaceTrend, cardioWeeklyTrend, type CardioWeekPoint, type PacePoin
 import { sessionDensity, type SessionDensityPoint } from '@/lib/insights/density'
 import { muscleBalance, type BalanceRatio } from '@/lib/insights/balance'
 import { strengthWeightTrend, type StrengthWeightPoint } from '@/lib/insights/combined'
+import { exerciseProgressionInsights, type ExerciseProgressionInsight } from '@/lib/insights/exerciseProgression'
 import {
   MUSCLE_REGIONS,
   muscleMapSnapshot,
@@ -56,6 +57,50 @@ export const getStalledExercisesCommand = defineCommand<{ weeks?: number }, Stal
   kind: 'read',
   parameters: { type: 'object', properties: { weeks: { type: 'number' } } },
   handler: async (args) => stalledExercises(await allSessions(), effectiveTodayISO(), args.weeks ?? 4),
+})
+
+interface ExerciseProgressionArgs {
+  exerciseId?: string
+  limit?: number
+  scheme?: 'double-progression' | 'linear' | 'e1rm-percent'
+  repRangeLo?: number
+  repRangeHi?: number
+  targetRir?: number
+}
+
+export const getExerciseProgressionCommand = defineCommand<ExerciseProgressionArgs, ExerciseProgressionInsight[]>({
+  name: 'insights.exercise_progression',
+  title: 'Get exercise progression evidence',
+  description:
+    'Read deterministic exercise-continuity evidence: last performed date, recent completed working sets, e1RM direction, target muscles, and equipment. Omit exerciseId to discover recently trained movements. For one candidate, provide a rep range to calculate its next progression target.',
+  kind: 'read',
+  parameters: {
+    type: 'object',
+    properties: {
+      exerciseId: { type: 'string' },
+      limit: { type: 'number', description: 'default 16; ignored for a single exercise' },
+      scheme: { type: 'string', enum: ['double-progression', 'linear', 'e1rm-percent'] },
+      repRangeLo: { type: 'number' },
+      repRangeHi: { type: 'number' },
+      targetRir: { type: 'number' },
+    },
+  },
+  handler: async (args, ctx) => {
+    const [sessions, exercises] = [await allSessions(), await allExercises(ctx.qc)]
+    const hasRange = Number.isFinite(args.repRangeLo) && Number.isFinite(args.repRangeHi)
+    const lo = hasRange ? Math.max(1, Math.round(args.repRangeLo!)) : undefined
+    const hi = hasRange ? Math.max(lo!, Math.round(args.repRangeHi!)) : undefined
+    return exerciseProgressionInsights({
+      sessions,
+      exercises,
+      today: effectiveTodayISO(),
+      exerciseId: args.exerciseId,
+      limit: args.limit,
+      scheme: args.scheme,
+      repRange: lo !== undefined && hi !== undefined ? [lo, hi] : undefined,
+      targetRir: args.targetRir,
+    })
+  },
 })
 
 export interface AdherenceInsight extends AdherenceStat {
