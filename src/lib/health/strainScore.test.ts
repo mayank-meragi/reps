@@ -36,13 +36,13 @@ describe('buildStrainScore', () => {
 
   it('sets the target band from the recovery zone', () => {
     const pts = [row('2026-10-05', { '120': 10 })]
-    expect(buildStrainScore('2026-10-05', pts, 'green').target).toEqual({ low: 60, high: 85, basedOn: 'green' })
-    expect(buildStrainScore('2026-10-05', pts, 'red').target).toEqual({ low: 0, high: 35, basedOn: 'red' })
+    expect(buildStrainScore('2026-10-05', pts, { zone: 'green', provisional: false }).target).toEqual({ low: 60, high: 85, basedOn: 'green', provisional: false })
+    expect(buildStrainScore('2026-10-05', pts, { zone: 'red', provisional: true }).target).toEqual({ low: 0, high: 35, basedOn: 'red', provisional: true })
     expect(buildStrainScore('2026-10-05', pts, null).target).toBeNull()
   })
 
   it('reports no_data when the date has no row', () => {
-    const s = buildStrainScore('2026-10-06', [row('2026-10-05', { '120': 10 })], 'yellow')
+    const s = buildStrainScore('2026-10-06', [row('2026-10-05', { '120': 10 })], { zone: 'yellow', provisional: false })
     expect(s.status).toBe('no_data')
     expect(s.score).toBeNull()
     expect(s.target).not.toBeNull()

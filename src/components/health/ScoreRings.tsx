@@ -9,7 +9,7 @@ export type ScorePanel = 'strain' | 'recovery' | 'sleep'
 export default function ScoreRings({ scores, selected, onSelect }: { scores?: HealthScores; selected: ScorePanel | null; onSelect: (panel: ScorePanel | null) => void }) {
   const recovery = scores?.recovery
   const recoveryScheme: RingScheme = `recovery-${recovery?.zone ?? 'green'}`
-  const calibrating = recovery?.status === 'calibrating' ? `${recovery.calibration.have}/${recovery.calibration.need}` : undefined
+  const progress = recovery && (recovery.status === 'calibrating' || recovery.status === 'provisional') ? `${recovery.calibration.have}/${recovery.calibration.need}` : undefined
   return (
     <Card>
       <CardContent>
@@ -18,7 +18,7 @@ export default function ScoreRings({ scores, selected, onSelect }: { scores?: He
             <ScoreRing value={scores?.strain.score ?? null} label="Strain" scheme="strain" />
           </ToggleGroupItem>
           <ToggleGroupItem value="recovery" aria-label="Recovery" className="h-auto flex-1 p-2">
-            <ScoreRing value={recovery?.score ?? null} label="Recovery" scheme={recoveryScheme} placeholder={calibrating} />
+            <ScoreRing value={recovery?.score ?? null} label="Recovery" scheme={recoveryScheme} placeholder={progress} />
           </ToggleGroupItem>
           <ToggleGroupItem value="sleep" aria-label="Sleep" className="h-auto flex-1 p-2">
             <ScoreRing value={scores?.sleep.score ?? null} label="Sleep" scheme="sleep" />

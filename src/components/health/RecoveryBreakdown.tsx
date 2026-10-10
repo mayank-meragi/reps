@@ -21,7 +21,7 @@ export default function RecoveryBreakdown({ score }: { score: RecoveryScore }) {
   const zone = score.zone ? ZONE[score.zone] : null
   const flagged = score.flags.filter((f) => f.penalty > 0)
   return (
-    <BreakdownCard title="Recovery score" note={score.note} aside={zone && <span className={cn('font-semibold', zone.text)}>{zone.label}</span>}>
+    <BreakdownCard title="Recovery score" note={score.note} aside={zone ? <span className={cn('font-semibold', zone.text)}>{zone.label}</span> : score.provisionalScore !== null && `Early estimate ${score.provisionalScore}`}>
       <ul className="space-y-4">
         {score.components.map((c) => (
           <BreakdownRow key={c.id} label={c.label} aside={weightLabel(c)} detail={c.detail}>

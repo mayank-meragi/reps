@@ -16,7 +16,7 @@ import { healthKeys } from '@/lib/queryKeys'
 import { BASELINE_DAYS } from '@/lib/health/baseline'
 import { buildHealthMonitor, MONITOR_TYPES, type HealthMonitor } from '@/lib/selectors/healthMonitor'
 import { buildSleepScore, DEFAULT_SLEEP_NEED_MIN, type SleepScore } from '@/lib/health/sleepScore'
-import { buildRecoveryScore, RECOVERY_TYPES, type RecoveryScore } from '@/lib/health/recoveryScore'
+import { buildRecoveryScore, RECOVERY_BASELINE_DAYS, RECOVERY_TYPES, planningZone, type RecoveryScore } from '@/lib/health/recoveryScore'
 import { buildStrainScore, STRAIN_TYPE, type StrainScore } from '@/lib/health/strainScore'
 import { getProfile } from './profile'
 import { defineCommand } from './registry'
@@ -181,15 +181,15 @@ export const getHealthScoresCommand = defineCommand<{ date?: string }, HealthSco
   name: 'health.get_scores',
   title: 'Read the daily scores',
   description:
-    "The score rings on the Health page for one civil date (YYYY-MM-DD, default today). `sleep` is the 0–100 sleep score for the night that ended that day, with its parts (duration 40, efficiency 20, restorative deep/REM 25, consistency 15; a part with missing data is dropped and the rest rescaled), each part's points and the inputs behind it, plus the underlying facts (minutes asleep/in bed, deep/REM minutes, bedtime). Duration is measured against the user's sleep need (profile.sleepNeedMinutes, default 480; change it with profile.update). `recovery` is the 0–100 recovery score (zones: red under 34, yellow 34–66, green 67+): today's overnight HRV, resting heart rate, sleep score and respiratory rate compared, as z-scores, with the user's own previous-30-day baseline (needs 5 days; until then status is 'calibrating' with progress), weighted HRV 40 / resting HR 25 / sleep 20 / respiratory 10 and rescaled over the inputs present, plus illness flags for unusual skin temperature or low SpO2 that subtract up to 5 points each. Each component carries its value, baseline mean, z (positive = better recovered), effective weight and a readable detail, so you can explain exactly why the score is what it is. `strain` is the 0–100% strain score for the day: load = Σ minutes at each bpm × max(0, bpm − 110), strain = 100×(1−e^(−load/1234)) — every minute above 110 bpm counts, harder minutes count proportionally more, and anything below 110 (sleep, rest, strolling) counts for nothing. The constants were fitted to the user's Bevel strain values over 7 days, so expect roughly Bevel-like numbers (average miss ~3–8 points). It returns the load, minutes above 110/130/150 bpm, how many minutes of data exist (low on a partial day), the parameters, and `target`, the recommended strain range for that day derived from the day's recovery zone (red <35, yellow 35–60, green 60–85). Needs the heart-rate type synced (health.sync does this by default). If sleep.score is null, check health.sync_status and run health.sync.",
+    "The score rings on the Health page for one civil date (YYYY-MM-DD, default today). `sleep` is the 0–100 sleep score for the night that ended that day: duration 55 (minutes asleep vs the night's need = profile.sleepNeedMinutes, default 480, plus 25% of last night's shortfall; `needTonightMinutes`), regularity 15 (bed and wake time vs the average of the previous 7 nights, needs 4 earlier nights), restlessness 10 (brief wake-ups per hour in bed, needs a stage breakdown), efficiency 5 (asleep / in bed), restorative 15 (deep and REM shares; needs stages). A part with missing data is dropped and the rest rescaled to 100. Each part's points and inputs are returned, plus the facts (minutes asleep/in bed, deep/REM minutes, bedtime, wake time, brief wake-ups). Naps are not counted. Change the need with profile.update. `recovery` is the 1–100 recovery score (zones: red under 34, yellow 34–66, green 67+): last night's HRV, resting heart rate, sleep score and respiratory rate compared, as z-scores, with the user's own previous-60-day baseline, weighted HRV 40 / resting HR 25 / sleep 20 / respiratory 10 and rescaled over the inputs present, mapped so z −3…+3 spans 0…100 (z 0 is 50), minus up to 5 points each for unusual skin temperature or low SpO2. Only nights of at least 4 hours' sleep are scored or used in the baseline. `recovery.status` is 'ok' (score present, needs 14 baseline days), 'provisional' (5–13 baseline days: `score` is null and an early estimate is in `provisionalScore`; the UI does not headline it), 'calibrating' (under 5 days), 'insufficient_sleep' (night under 4 h, no score) or 'no_data'. `calibration` shows baseline days have/need. Each component carries its value, baseline mean, z (positive = better recovered), effective weight and a readable detail, so you can explain exactly why the score is what it is. `strain` is the 0–100% strain score for the day: load = Σ minutes at each bpm × max(0, bpm − 110), strain = 100×(1−e^(−load/1234)) — every minute above 110 bpm counts, harder minutes count proportionally more, and anything below 110 (sleep, rest, strolling) counts for nothing. The constants were fitted to the user's Bevel strain values over 7 days, so expect roughly Bevel-like numbers (average miss ~3–8 points). It returns the load, minutes above 110/130/150 bpm, how many minutes of data exist (low on a partial day), the parameters, and `target`, the recommended strain range for that day derived from the day's recovery zone (red <35, yellow 35–60, green 60–85); while recovery has only an early estimate (5–13 baseline days) the zone comes from `provisionalScore` and `target.provisional` is true. Needs the heart-rate type synced (health.sync does this by default). If sleep.score is null, check health.sync_status and run health.sync.",
   kind: 'read',
   parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD, default today' } } },
   handler: async (args, ctx) => {
     const date = args.date ?? effectiveTodayISO()
     const need = getProfile(ctx.qc)?.sleepNeedMinutes ?? DEFAULT_SLEEP_NEED_MIN
-    const metricFrom = addDays(date, -BASELINE_DAYS - 1)
+    const metricFrom = addDays(date, -RECOVERY_BASELINE_DAYS - 1)
     // Sleep reaches further back: each baseline night's score needs its own 7 earlier nights
-    const sleepFrom = addDays(date, -BASELINE_DAYS - 8)
+    const sleepFrom = addDays(date, -RECOVERY_BASELINE_DAYS - 8)
     const metricTypes = [RECOVERY_TYPES.hrv, RECOVERY_TYPES.rhr, RECOVERY_TYPES.rr, RECOVERY_TYPES.spo2, RECOVERY_TYPES.temp]
     const [metrics, sleepWindow, hr] = await Promise.all([
       readHealthWindow(metricTypes, metricFrom, date),
@@ -213,7 +213,7 @@ export const getHealthScoresCommand = defineCommand<{ date?: string }, HealthSco
       date,
       sleep: buildSleepScore(date, sleep, need),
       recovery,
-      strain: buildStrainScore(date, hr[STRAIN_TYPE], recovery.zone),
+      strain: buildStrainScore(date, hr[STRAIN_TYPE], planningZone(recovery)),
     }
   },
 })

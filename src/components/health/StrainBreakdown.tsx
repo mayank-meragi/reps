@@ -15,7 +15,7 @@ export default function StrainBreakdown({ score }: { score: StrainScore }) {
         <div className="space-y-2">
           <IndicatorBar value={score.score / 100} band={t ? [t.low / 100, t.high / 100] : undefined} tone="strain" />
           <p className="text-xs text-muted-foreground">
-            {t ? `Today's target is ${t.low}–${t.high}% because recovery is ${t.basedOn}. You're at ${score.score}%.` : `You're at ${score.score}%. A target needs today's recovery score.`}
+            {t ? `Today's target is ${t.low}–${t.high}% because recovery is ${t.basedOn}${t.provisional ? ' (early estimate)' : ''}. You're at ${score.score}%.` : `You're at ${score.score}%. A target needs today's recovery score.`}
           </p>
         </div>
       )}

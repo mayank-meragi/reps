@@ -99,7 +99,8 @@ export function mainSleepFor(points: StoredPoint[], date: string): SleepPick | n
   return pool.sort((a, b) => minutesAsleepOf(b.body) - minutesAsleepOf(a.body))[0] ?? null
 }
 
-function sleepMinutes(points: StoredPoint[], date: string): number | null {
+/** Minutes asleep in the main sleep that ended on `date`, or null when there is none. */
+export function sleepMinutes(points: StoredPoint[], date: string): number | null {
   const s = mainSleepFor(points, date)
   return s ? toNumber((s.body.summary as Record<string, unknown> | undefined)?.minutesAsleep) : null
 }
